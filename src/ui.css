@@ -1,0 +1,638 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&display=swap");
+
+:root {
+  --semrush-coach-bg: #f8f6f1;
+  --semrush-coach-panel-bg: rgba(248, 246, 241, 0.96);
+  --semrush-coach-surface: #ffffff;
+  --semrush-coach-surface-muted: #fcfbf8;
+  --semrush-coach-border: rgba(64, 78, 72, 0.10);
+  --semrush-coach-border-strong: rgba(64, 78, 72, 0.16);
+  --semrush-coach-text: #20312c;
+  --semrush-coach-text-soft: #64726d;
+  --semrush-coach-text-faint: #8c9792;
+  --semrush-coach-primary: #004d40;
+  --semrush-coach-primary-soft: rgba(0, 77, 64, 0.10);
+  --semrush-coach-user-bg: #eef5f2;
+  --semrush-coach-shadow: 0 18px 42px rgba(21, 35, 31, 0.08);
+  --semrush-coach-card-shadow: 0 10px 24px rgba(18, 31, 28, 0.05);
+}
+
+.semrush-coach-root {
+  position: fixed;
+  right: 24px;
+  bottom: 96px;
+  z-index: 2147483000;
+  font-family: "Manrope", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--semrush-coach-text);
+}
+
+.semrush-coach-bubble {
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 999px;
+  background: var(--semrush-coach-primary);
+  color: #f6f8f7;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 16px 34px rgba(0, 77, 64, 0.22);
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.semrush-coach-bubble:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 20px 38px rgba(0, 77, 64, 0.26);
+}
+
+.semrush-coach-bubble-active {
+  transform: scale(0.97);
+}
+
+.semrush-coach-panel {
+  position: absolute;
+  right: 0;
+  bottom: 76px;
+  width: 446px;
+  max-height: min(84vh, 860px);
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 24px;
+  background: var(--semrush-coach-panel-bg);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  box-shadow: var(--semrush-coach-shadow);
+  backdrop-filter: blur(20px);
+  overflow: hidden;
+}
+
+.semrush-coach-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.95), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+
+.semrush-coach-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.semrush-coach-panel-expanded {
+  width: 472px;
+}
+
+.semrush-coach-panel.semrush-coach-settings-view {
+  grid-template-rows: auto auto;
+}
+
+.semrush-coach-panel.semrush-coach-settings-view .semrush-coach-history,
+.semrush-coach-panel.semrush-coach-settings-view .semrush-coach-quick-prompts,
+.semrush-coach-panel.semrush-coach-settings-view .semrush-coach-form {
+  display: none;
+}
+
+.semrush-coach-hidden {
+  display: none;
+}
+
+.semrush-coach-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.semrush-coach-header > div:first-child,
+.semrush-coach-page-chip {
+  display: none;
+}
+
+.semrush-coach-header {
+  justify-content: flex-end;
+}
+
+.semrush-coach-eyebrow {
+  margin: 0 0 8px;
+  color: var(--semrush-coach-text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.semrush-coach-header h2 {
+  margin: 0;
+  color: var(--semrush-coach-text);
+  font-size: 22px;
+  line-height: 1.16;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.semrush-coach-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.semrush-coach-settings-toggle,
+.semrush-coach-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  border: 1px solid var(--semrush-coach-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--semrush-coach-text);
+}
+
+.semrush-coach-settings-toggle {
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.semrush-coach-settings-toggle,
+.semrush-coach-close {
+  cursor: pointer;
+}
+
+.semrush-coach-settings-toggle-active {
+  background: var(--semrush-coach-primary-soft);
+  color: var(--semrush-coach-primary);
+  border-color: rgba(0, 77, 64, 0.16);
+}
+
+.semrush-coach-close {
+  width: 36px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.semrush-coach-settings,
+.semrush-coach-card,
+.semrush-coach-form,
+.semrush-coach-attachment-card {
+  background: var(--semrush-coach-surface);
+  border: 1px solid var(--semrush-coach-border);
+  box-shadow: var(--semrush-coach-card-shadow);
+}
+
+.semrush-coach-settings {
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.semrush-coach-settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.semrush-coach-settings-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--semrush-coach-text-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.semrush-coach-setting-full {
+  grid-column: 1 / -1;
+}
+
+.semrush-coach-settings-grid input[type="text"],
+.semrush-coach-settings-grid input[type="password"],
+.semrush-coach-settings-grid textarea,
+.semrush-coach-settings-grid select,
+.semrush-coach-input {
+  width: 100%;
+  border: 1px solid var(--semrush-coach-border);
+  border-radius: 999px;
+  background: #fcfbf8;
+  padding: 12px 14px;
+  color: var(--semrush-coach-text);
+  font: inherit;
+  appearance: none;
+}
+
+.semrush-coach-settings-grid textarea,
+.semrush-coach-input {
+  border-radius: 20px;
+  resize: none;
+}
+
+.semrush-coach-settings-grid input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--semrush-coach-primary);
+}
+
+.semrush-coach-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.semrush-coach-settings-save,
+.semrush-coach-settings-test,
+.semrush-coach-settings-add-site,
+.semrush-coach-attach,
+.semrush-coach-extract-ui,
+.semrush-coach-generate-prd,
+.semrush-coach-attachment-remove,
+.semrush-coach-submit {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 160ms ease, opacity 160ms ease, background-color 160ms ease;
+}
+
+.semrush-coach-settings-save,
+.semrush-coach-attach,
+.semrush-coach-submit,
+.semrush-coach-attachment-remove {
+  background: var(--semrush-coach-primary);
+  color: #f5f8f6;
+}
+
+.semrush-coach-settings-test,
+.semrush-coach-settings-add-site,
+.semrush-coach-extract-ui,
+.semrush-coach-generate-prd {
+  background: var(--semrush-coach-primary-soft);
+  color: var(--semrush-coach-primary);
+  border: 1px solid var(--semrush-coach-border);
+  padding: 7px 11px; /* accounts for 1px border */
+}
+
+.semrush-coach-settings-save:hover,
+.semrush-coach-settings-test:hover,
+.semrush-coach-settings-add-site:hover,
+.semrush-coach-attach:hover,
+.semrush-coach-extract-ui:hover,
+.semrush-coach-generate-prd:hover,
+.semrush-coach-submit:hover,
+.semrush-coach-attachment-remove:hover {
+  transform: translateY(-1px);
+}
+
+.semrush-coach-settings-status,
+.semrush-coach-status,
+.semrush-coach-meta,
+.semrush-coach-attachment-meta {
+  color: var(--semrush-coach-text-soft);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.semrush-coach-history {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: auto;
+  min-height: 260px;
+  padding-right: 2px;
+}
+
+.semrush-coach-history::-webkit-scrollbar {
+  width: 6px;
+}
+
+.semrush-coach-history::-webkit-scrollbar-thumb {
+  background: rgba(64, 78, 72, 0.16);
+  border-radius: 999px;
+}
+
+.semrush-coach-card,
+.semrush-coach-message {
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.semrush-coach-welcome-card {
+  display: grid;
+  gap: 0;
+  justify-items: center;
+  padding: 34px 8px 20px;
+  min-height: 260px;
+}
+
+.semrush-coach-welcome-hero {
+  position: relative;
+  width: 238px;
+  height: 238px;
+  display: grid;
+  place-items: center;
+  margin-top: 8px;
+}
+
+.semrush-coach-welcome-orbit {
+  position: absolute;
+  inset: 20px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(0, 77, 64, 0.12), transparent 46%),
+    radial-gradient(circle at 70% 72%, rgba(0, 77, 64, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(245, 243, 237, 0.72));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 18px 40px rgba(18, 31, 28, 0.06);
+}
+
+.semrush-coach-welcome-window {
+  position: relative;
+  width: 156px;
+  padding: 18px 18px 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(64, 78, 72, 0.08);
+  box-shadow: 0 20px 42px rgba(18, 31, 28, 0.10);
+}
+
+.semrush-coach-welcome-window::after {
+  content: "";
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(0, 77, 64, 0.12);
+  box-shadow: 0 0 0 6px rgba(0, 77, 64, 0.05);
+}
+
+.semrush-coach-welcome-window-bar,
+.semrush-coach-welcome-window-line,
+.semrush-coach-welcome-window-grid span {
+  display: block;
+  border-radius: 999px;
+  background: rgba(0, 77, 64, 0.12);
+}
+
+.semrush-coach-welcome-window-bar {
+  width: 56px;
+  height: 8px;
+  margin-bottom: 14px;
+}
+
+.semrush-coach-welcome-window-line {
+  height: 8px;
+  margin-bottom: 10px;
+}
+
+.semrush-coach-welcome-window-line-short {
+  width: 62%;
+}
+
+.semrush-coach-welcome-window-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.semrush-coach-welcome-window-grid span {
+  height: 34px;
+  border-radius: 12px;
+}
+
+.semrush-coach-welcome-badge {
+  position: absolute;
+  right: 22px;
+  bottom: 24px;
+  min-width: 52px;
+  height: 52px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--semrush-coach-primary);
+  color: #f6f8f7;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  box-shadow: 0 18px 32px rgba(0, 77, 64, 0.18);
+}
+
+.semrush-coach-card-title {
+  margin: 0 0 12px;
+  color: var(--semrush-coach-text);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+}
+
+.semrush-coach-card p {
+  margin: 0;
+  color: var(--semrush-coach-text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.9;
+}
+
+.semrush-coach-card p + p {
+  margin-top: 12px;
+}
+
+.semrush-coach-message-user {
+  align-self: flex-end;
+  max-width: 78%;
+  background: var(--semrush-coach-user-bg);
+  border: 1px solid rgba(0, 77, 64, 0.08);
+  box-shadow: none;
+  color: var(--semrush-coach-text);
+}
+
+.semrush-coach-steps {
+  margin: 14px 0 0;
+  padding-left: 20px;
+  color: var(--semrush-coach-text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.85;
+}
+
+.semrush-coach-steps li + li {
+  margin-top: 10px;
+}
+
+.semrush-coach-hints,
+.semrush-coach-quick-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.semrush-coach-hint,
+.semrush-coach-prompt {
+  border: 1px solid var(--semrush-coach-border);
+  border-radius: 999px;
+  background: var(--semrush-coach-surface-muted);
+  color: var(--semrush-coach-primary);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.semrush-coach-form {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.semrush-coach-input {
+  min-height: 110px;
+  line-height: 1.75;
+  color: var(--semrush-coach-text);
+}
+
+.semrush-coach-input::placeholder {
+  color: var(--semrush-coach-text-faint);
+}
+
+.semrush-coach-attachment-card {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.semrush-coach-attachment-preview {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.semrush-coach-attachment-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.semrush-coach-form-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.semrush-coach-form-tools {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.semrush-coach-submit:disabled {
+  opacity: 0.62;
+  cursor: progress;
+}
+
+.semrush-coach-highlight-target {
+  outline: 2px solid #0b7665 !important;
+  outline-offset: 4px !important;
+  box-shadow: 0 0 0 6px rgba(11, 118, 101, 0.12) !important;
+}
+
+.semrush-coach-progress-bar-wrap {
+  background: #E8ECEA;
+  border-radius: 4px;
+  height: 6px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.semrush-coach-progress-bar {
+  background: #008761;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.semrush-coach-copy-btn {
+  background: transparent;
+  border: 1px solid #E8ECEA;
+  color: #68736d;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.semrush-coach-copy-btn:hover {
+  background: #f4f6f5;
+  color: #17211d;
+  border-color: #d1d6d4;
+}
+
+@media (max-width: 720px) {
+  .semrush-coach-root {
+    right: 12px;
+    bottom: 84px;
+  }
+
+  .semrush-coach-panel,
+  .semrush-coach-panel-expanded {
+    width: min(94vw, 460px);
+    max-height: 86vh;
+    padding: 16px;
+  }
+
+  .semrush-coach-header {
+    gap: 10px;
+  }
+
+  .semrush-coach-header h2 {
+    font-size: 20px;
+  }
+
+  .semrush-coach-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .semrush-coach-attachment-card {
+    grid-template-columns: 1fr;
+  }
+
+  .semrush-coach-form-row {
+    align-items: stretch;
+    flex-direction: row;
+  }
+
+  .semrush-coach-submit {
+    min-width: 84px;
+  }
+}

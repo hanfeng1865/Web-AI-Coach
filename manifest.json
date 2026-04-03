@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "页面 AI 教练",
+  "version": "1.0.0",
+  "description": "任意网页一键唤出 AI 助手，自动截屏当前页面、读懂界面内容，用中文给你讲解并指出下一步怎么做。",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["src/dom-snapshot.js", "src/content-script.js"],
+      "css": ["src/ui.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "页面 AI 教练",
+    "default_icon": {
+      "16": "assets/icon.png",
+      "32": "assets/icon.png",
+      "48": "assets/icon.png",
+      "128": "assets/icon.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icon.png",
+    "32": "assets/icon.png",
+    "48": "assets/icon.png",
+    "128": "assets/icon.png"
+  }
+}
