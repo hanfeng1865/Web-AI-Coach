@@ -1605,7 +1605,7 @@
     const progressSteps = [
       "📸 正在截取页面画面…",
       "🔍 正在采集 DOM 样式数据…",
-      "🤖 正在调用 AI 视觉模型分析（约 30-60 秒）…",
+      "🤖 正在调用 AI 视觉模型分析…",
       "📝 正在生成规范文档…"
     ];
     let currentStep = 0;
@@ -1618,9 +1618,6 @@
       <div class="semrush-coach-progress-bar-wrap">
         <div class="semrush-coach-progress-bar" style="width: 5%"></div>
       </div>
-      <p class="semrush-coach-progress-hint" style="font-size:12px;color:#888;margin-top:6px;">
-        首次分析通常需要 30-60 秒，请耐心等待
-      </p>
     `;
     historyEl.appendChild(progressCard);
     scrollHistoryToBottom();
@@ -1816,7 +1813,7 @@
 
     const progressSteps = [
       "📸 正在抓取页面结构与截图…",
-      "🤖 正在调用 AI 模型深层提取特征（约 30 秒）…",
+      "🤖 正在调用 AI 模型深层提取特征…",
       "📝 正在整理 PRD 文档…"
     ];
     let currentStep = 0;
