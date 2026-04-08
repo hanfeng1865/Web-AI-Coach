@@ -84,8 +84,8 @@
             <input class="semrush-coach-setting-model-input semrush-coach-hidden" type="text" placeholder="输入自定义模型名称，如 ep-202xxx" />
           </label>
           <label class="semrush-coach-setting-full">
-            <span>你的 API Key（可选，免费次数用完后使用）</span>
-            <input class="semrush-coach-setting-api-key" type="password" placeholder="sk-..." />
+            <span>你的 Qwen API Key（可选，免费次数用完后使用）</span>
+            <input class="semrush-coach-setting-api-key" type="password" placeholder="填写通义千问 / Qwen 的 API Key" />
           </label>
           <label class="semrush-coach-setting-full">
             <span>启用网站列表（每行一个域名）</span>
