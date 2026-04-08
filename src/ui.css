@@ -221,6 +221,8 @@
 .semrush-coach-settings-grid select,
 .semrush-coach-input {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   border: 1px solid var(--semrush-coach-border);
   border-radius: 999px;
   background: #fcfbf8;
@@ -530,10 +532,13 @@
   gap: 12px;
   padding: 16px;
   border-radius: 8px;
+  min-width: 0;
 }
 
 .semrush-coach-input {
+  display: block;
   min-height: 110px;
+  min-width: 0;
   line-height: 1.75;
   color: var(--semrush-coach-text);
 }
@@ -573,6 +578,7 @@
 
 .semrush-coach-form-tools {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
