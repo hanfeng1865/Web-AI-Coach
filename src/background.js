@@ -280,7 +280,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             localDraft
           });
           console.log("[AI Coach] 远程 API 调用成功");
-          sendResponse({ ok: true, data: remoteData, meta: { mode: "remote" } });
+          sendResponse({
+            ok: true,
+            data: remoteData,
+            meta: {
+              mode: "remote",
+              usageMeta: remoteData?.usageMeta || null
+            }
+          });
           return;
         } catch (error) {
           console.error("[AI Coach] 远程 API 调用失败:", error);

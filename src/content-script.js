@@ -824,6 +824,8 @@
       suggestedNextSteps: [],
       confidence: finalData.confidence ?? 0.72,
       elementHints: [],
+      renderAsCode: Boolean(finalData.renderAsCode),
+      renderAsMindmap: Boolean(finalData.renderAsMindmap),
       streaming: true
     };
 
@@ -852,10 +854,26 @@
     entry.suggestedNextSteps = finalData.suggestedNextSteps || [];
     entry.elementHints = finalData.elementHints || [];
     entry.confidence = finalData.confidence ?? entry.confidence;
+    entry.renderAsCode = Boolean(finalData.renderAsCode);
+    entry.renderAsMindmap = Boolean(finalData.renderAsMindmap);
     entry.streaming = false;
     renderHistory();
 
     return entry;
+  }
+
+  function applyUsageMeta(usageMeta) {
+    if (!usageMeta || !Number.isFinite(Number(usageMeta.remainingFreeUses))) {
+      return;
+    }
+
+    state.settings.trialStatus = {
+      enabled: true,
+      remainingFreeUses: Number(usageMeta.remainingFreeUses),
+      freeTrialLimit: Number(usageMeta.freeTrialLimit || state.settings.freeTrialLimit || 15)
+    };
+
+    fillSettingsForm();
   }
 
   function setModeLabel(mode) {
@@ -1659,6 +1677,7 @@
         throw new Error(response?.error || "插件后台请求失败");
       }
 
+      applyUsageMeta(response.data?.usageMeta);
       openPanel(true);
       const spec = response.data;
 
@@ -1860,8 +1879,9 @@
         throw new Error(response?.error || "插件后台请求失败");
       }
 
+      applyUsageMeta(response.data?.usageMeta);
       openPanel(true);
-      
+
       await revealAssistantMessage({
         pageSummary: response.data.pageSummary || `产品需求文档 (PRD) · ${snapshot.title || snapshot.url}`,
         answer: response.data.answer || "文档生成失败",
@@ -2000,10 +2020,10 @@
       const data = response.data || {};
       const summaryMarkdown = String(data.summaryMarkdown || "").trim();
       const mindmapMermaid = String(data.mindmapMermaid || "").trim();
+      applyUsageMeta(data.usageMeta);
 
       if (summaryMarkdown) {
-        state.history.push({
-          role: "assistant",
+        await revealAssistantMessage({
           pageSummary: data.pageSummary || `页面总结 · ${snapshot.title || snapshot.url}`,
           answer: summaryMarkdown,
           suggestedNextSteps: [],
@@ -2208,6 +2228,7 @@
       openPanel(needsExpanded);
 
       setModeLabel(response.meta?.mode || (state.settings.remoteEnabled ? "remote" : "local"));
+      applyUsageMeta(response.meta?.usageMeta || response.data?.usageMeta);
       const assistantEntry = await revealAssistantMessage(response.data);
       renderQuickPrompts(response.data.quickPrompts || QUICK_PROMPTS);
 

@@ -242,6 +242,13 @@ function normalizeRemoteResponse(raw, snapshot) {
   };
 }
 
+function attachUsageMeta(result, data) {
+  if (data?.usageMeta) {
+    result.usageMeta = data.usageMeta;
+  }
+  return result;
+}
+
 function buildMessages(payload, localDraft) {
   const systemPrompt = [
     "你是一个网页操作教练，帮用户看懂当前页面、告诉他下一步该干什么。",
@@ -342,7 +349,7 @@ export async function generateRemoteGuidance({ payload, settings, localDraft }) 
 
     const content = data?.choices?.[0]?.message?.content;
     const parsed = safeParseModelJson(content);
-    return normalizeRemoteResponse(parsed, payload.pageSnapshot);
+    return attachUsageMeta(normalizeRemoteResponse(parsed, payload.pageSnapshot), data);
   } catch (error) {
     throw error;
   }
@@ -527,7 +534,7 @@ export async function generateUISpecAnalysis({ payload, settings }) {
     timeoutMs
   });
   const content = data?.choices?.[0]?.message?.content;
-  return safeParseModelJson(content);
+  return attachUsageMeta(safeParseModelJson(content), data);
 }
 
 const PRD_SYSTEM_PROMPT = [
@@ -583,7 +590,7 @@ export async function generatePRDAnalysis({ payload, settings }) {
     timeoutMs
   });
   const content = data?.choices?.[0]?.message?.content;
-  return safeParseModelJson(content);
+  return attachUsageMeta(safeParseModelJson(content), data);
 }
 
 const PAGE_SUMMARY_SYSTEM_PROMPT = [
@@ -645,5 +652,5 @@ export async function generatePageSummaryAnalysis({ payload, settings }) {
     timeoutMs
   });
   const content = data?.choices?.[0]?.message?.content;
-  return safeParseModelJson(content);
+  return attachUsageMeta(safeParseModelJson(content), data);
 }
