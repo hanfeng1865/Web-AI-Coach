@@ -1,0 +1,6 @@
+releases/
+server/data/
+assets/xhs_cover_*.png
+assets/xhs_cover_philosophy.md
+gen_xhs_cover.ps1
+gen_xhs_cover_ascii.ps1

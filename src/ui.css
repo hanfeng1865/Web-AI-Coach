@@ -249,9 +249,12 @@
 .semrush-coach-settings-save,
 .semrush-coach-settings-test,
 .semrush-coach-settings-add-site,
+.semrush-coach-paste-text,
+.semrush-coach-format-markdown,
 .semrush-coach-attach,
 .semrush-coach-extract-ui,
 .semrush-coach-generate-prd,
+.semrush-coach-generate-summary,
 .semrush-coach-attachment-remove,
 .semrush-coach-submit {
   border: 0;
@@ -274,8 +277,11 @@
 
 .semrush-coach-settings-test,
 .semrush-coach-settings-add-site,
+.semrush-coach-paste-text,
+.semrush-coach-format-markdown,
 .semrush-coach-extract-ui,
-.semrush-coach-generate-prd {
+.semrush-coach-generate-prd,
+.semrush-coach-generate-summary {
   background: var(--semrush-coach-primary-soft);
   color: var(--semrush-coach-primary);
   border: 1px solid var(--semrush-coach-border);
@@ -285,9 +291,12 @@
 .semrush-coach-settings-save:hover,
 .semrush-coach-settings-test:hover,
 .semrush-coach-settings-add-site:hover,
+.semrush-coach-paste-text:hover,
+.semrush-coach-format-markdown:hover,
 .semrush-coach-attach:hover,
 .semrush-coach-extract-ui:hover,
 .semrush-coach-generate-prd:hover,
+.semrush-coach-generate-summary:hover,
 .semrush-coach-submit:hover,
 .semrush-coach-attachment-remove:hover {
   transform: translateY(-1px);
@@ -453,6 +462,23 @@
   margin-top: 12px;
 }
 
+.semrush-coach-code-block {
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  border-radius: 14px;
+  background: #f4f7f5;
+  border: 1px solid rgba(64, 78, 72, 0.08);
+  color: var(--semrush-coach-text);
+  font: 13px/1.7 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.semrush-coach-paste-text {
+  display: none;
+}
+
 .semrush-coach-message-user {
   align-self: flex-end;
   max-width: 78%;
@@ -596,6 +622,171 @@
   background: #f4f6f5;
   color: #17211d;
   border-color: #d1d6d4;
+}
+
+.semrush-coach-mindmap-open-btn {
+  background: transparent;
+  border: 1px solid #E8ECEA;
+  color: #68736d;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.semrush-coach-mindmap-open-btn:hover {
+  background: #f4f6f5;
+  color: #17211d;
+  border-color: #d1d6d4;
+}
+
+.semrush-coach-mindmap-wrap {
+  margin-top: 4px;
+}
+
+.semrush-coach-mindmap-viewer {
+  display: grid;
+  gap: 10px;
+}
+
+.semrush-coach-mindmap-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.semrush-coach-mindmap-hint {
+  color: var(--semrush-coach-text-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.semrush-coach-mindmap-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.semrush-coach-mindmap-tool {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(64, 78, 72, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--semrush-coach-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.semrush-coach-mindmap-tool-label {
+  min-width: 54px;
+}
+
+.semrush-coach-mindmap-canvas {
+  position: relative;
+  height: 360px;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(64, 78, 72, 0.08);
+  cursor: grab;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,246,241,0.96)),
+    radial-gradient(circle at top left, rgba(47, 111, 237, 0.06), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(131, 88, 255, 0.05), transparent 24%);
+}
+
+.semrush-coach-mindmap-canvas-dragging {
+  cursor: grabbing;
+}
+
+.semrush-coach-mindmap-canvas-modal {
+  height: calc(90vh - 110px);
+}
+
+.semrush-coach-mindmap-stage-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.semrush-coach-mindmap-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.semrush-coach-mindmap-svg {
+  display: block;
+  width: auto;
+  height: auto;
+}
+
+.semrush-coach-mindmap-empty {
+  padding: 24px;
+  color: var(--semrush-coach-text-soft);
+  font-size: 14px;
+}
+
+.semrush-coach-mindmap-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+}
+
+.semrush-coach-mindmap-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 22, 19, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.semrush-coach-mindmap-modal-dialog {
+  position: absolute;
+  inset: 5vh 4vw;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 24px;
+  background: rgba(248, 246, 241, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 24px 64px rgba(18, 31, 28, 0.22);
+}
+
+.semrush-coach-mindmap-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.semrush-coach-mindmap-modal-close {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--semrush-coach-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--semrush-coach-text);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.semrush-coach-mindmap-modal-body {
+  min-height: 0;
+  flex: 1;
 }
 
 @media (max-width: 720px) {

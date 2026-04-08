@@ -16,6 +16,9 @@
 
   const DEFAULT_SETTINGS = {
     remoteEnabled: true,
+    trialEnabled: true,
+    trialApiUrl: "",
+    freeTrialLimit: 15,
     apiUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
     model: "qwen-vl-max",
     apiKey: "",
@@ -52,13 +55,17 @@
           <h2>看懂当前页面，告诉你下一步</h2>
         </div>
         <div class="semrush-coach-header-actions">
-          <button class="semrush-coach-settings-toggle" type="button">远程模型 API</button>
+          <button class="semrush-coach-settings-toggle" type="button">体验 / API 设置</button>
           <button class="semrush-coach-close" type="button" aria-label="关闭">×</button>
         </div>
       </header>
       <div class="semrush-coach-page-chip">正在读取当前页面…</div>
       <section class="semrush-coach-settings semrush-coach-hidden">
         <div class="semrush-coach-settings-grid">
+          <label class="semrush-coach-setting-full">
+            <span>体验服务地址</span>
+            <input class="semrush-coach-setting-trial-api-url" type="text" placeholder="https://your-domain.com/api/trial" />
+          </label>
           <label class="semrush-coach-setting-full">
             <span>服务商</span>
             <select class="semrush-coach-setting-provider">
@@ -77,7 +84,7 @@
             <input class="semrush-coach-setting-model-input semrush-coach-hidden" type="text" placeholder="输入自定义模型名称，如 ep-202xxx" />
           </label>
           <label class="semrush-coach-setting-full">
-            <span>API Key</span>
+            <span>你的 API Key（可选，免费次数用完后使用）</span>
             <input class="semrush-coach-setting-api-key" type="password" placeholder="sk-..." />
           </label>
           <label class="semrush-coach-setting-full">
@@ -99,18 +106,34 @@
         <div class="semrush-coach-attachment semrush-coach-hidden"></div>
         <div class="semrush-coach-form-row">
           <div class="semrush-coach-form-tools">
+            <button class="semrush-coach-paste-text" type="button">粘贴文本</button>
+            <button class="semrush-coach-format-markdown" type="button">转 Markdown</button>
             <button class="semrush-coach-attach" type="button">上传图片</button>
             <button class="semrush-coach-extract-ui" type="button">🎨 提取UI规范</button>
             <button class="semrush-coach-generate-prd" type="button">📄 生成PRD</button>
+            <button class="semrush-coach-generate-summary" type="button">🧠 总结+脑图</button>
           </div>
           <button class="semrush-coach-submit" type="submit">提问</button>
         </div>
       </form>
     </section>
+    <section class="semrush-coach-mindmap-modal semrush-coach-hidden" aria-hidden="true">
+      <div class="semrush-coach-mindmap-modal-backdrop"></div>
+      <div class="semrush-coach-mindmap-modal-dialog">
+        <div class="semrush-coach-mindmap-modal-header">
+          <p class="semrush-coach-card-title" style="margin:0;">脑图预览</p>
+          <button class="semrush-coach-mindmap-modal-close" type="button" aria-label="关闭">×</button>
+        </div>
+        <div class="semrush-coach-mindmap-modal-body"></div>
+      </div>
+    </section>
   `;
 
   const bubble = root.querySelector(".semrush-coach-bubble");
   const panel = root.querySelector(".semrush-coach-panel");
+  const mindmapModalEl = root.querySelector(".semrush-coach-mindmap-modal");
+  const mindmapModalBodyEl = root.querySelector(".semrush-coach-mindmap-modal-body");
+  const mindmapModalCloseEl = root.querySelector(".semrush-coach-mindmap-modal-close");
   const closeButton = root.querySelector(".semrush-coach-close");
   const historyEl = root.querySelector(".semrush-coach-history");
   const chipEl = root.querySelector(".semrush-coach-page-chip");
@@ -125,12 +148,16 @@
   const addCurrentSiteEl = root.querySelector(".semrush-coach-settings-add-site");
   const attachmentEl = root.querySelector(".semrush-coach-attachment");
   const fileInputEl = root.querySelector(".semrush-coach-file-input");
+  const pasteTextButtonEl = root.querySelector(".semrush-coach-paste-text");
+  const formatMarkdownButtonEl = root.querySelector(".semrush-coach-format-markdown");
   const attachButtonEl = root.querySelector(".semrush-coach-attach");
+  const generateSummaryButtonEl = root.querySelector(".semrush-coach-generate-summary");
   
   const providerSelectEl = root.querySelector(".semrush-coach-setting-provider");
   const modelSelectEl = root.querySelector(".semrush-coach-setting-model-select");
 
   const settingsFormEls = {
+    trialApiUrl: root.querySelector(".semrush-coach-setting-trial-api-url"),
     apiUrl: root.querySelector(".semrush-coach-setting-api-url"),
     modelInput: root.querySelector(".semrush-coach-setting-model-input"),
     apiKey: root.querySelector(".semrush-coach-setting-api-key"),
@@ -218,6 +245,577 @@
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
+  function escapeAttribute(text) {
+    return String(text || "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function isLikelyTitle(text) {
+    const trimmed = String(text || "").trim();
+    return (
+      trimmed.length > 0 &&
+      trimmed.length <= 32 &&
+      !/[\u3002\uff01\uff1f.!?:\uff1a]$/.test(trimmed) &&
+      !/^[-*+]\s/.test(trimmed) &&
+      !/^\d+[.)\u3001]/.test(trimmed)
+    );
+  }
+
+  function normalizeMarkdownLine(line) {
+    return String(line || "").replace(/\s+/g, " ").trim();
+  }
+
+  function convertPlainTextToMarkdown(sourceText) {
+    const normalized = String(sourceText || "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/\u00a0/g, " ");
+    const lines = normalized.split("\n");
+    const blocks = [];
+    let paragraphBuffer = [];
+    let firstMeaningfulLineHandled = false;
+
+    const flushParagraph = () => {
+      if (!paragraphBuffer.length) {
+        return;
+      }
+      blocks.push(paragraphBuffer.join(" "));
+      paragraphBuffer = [];
+    };
+
+    const pushBlock = (text) => {
+      flushParagraph();
+      blocks.push(text);
+    };
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        flushParagraph();
+        continue;
+      }
+
+      if (!firstMeaningfulLineHandled && isLikelyTitle(line)) {
+        pushBlock(`# ${normalizeMarkdownLine(line)}`);
+        firstMeaningfulLineHandled = true;
+        continue;
+      }
+
+      firstMeaningfulLineHandled = true;
+
+      if (/^(```|~~~)/.test(line)) {
+        pushBlock(line);
+        continue;
+      }
+
+      if (/^(#{1,6}\s|>\s|\|.+\||[-*+]\s|\d+\.\s)/.test(line)) {
+        pushBlock(line);
+        continue;
+      }
+
+      let match = line.match(/^[-*+\u2022\u00b7\u25cf\u25cb\u25aa\u25ab\u25e6\u2023]\s*(.+)$/);
+      if (match) {
+        pushBlock(`- ${normalizeMarkdownLine(match[1])}`);
+        continue;
+      }
+
+      match = line.match(/^(\d+)[.)\u3001]\s*(.+)$/);
+      if (match) {
+        pushBlock(`${match[1]}. ${normalizeMarkdownLine(match[2])}`);
+        continue;
+      }
+
+      match = line.match(/^(?:\u7b2c)?([\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343\u4e07]+)[\u3001.\uff0e]\s*(.+)$/);
+      if (match) {
+        pushBlock(`## ${normalizeMarkdownLine(match[2])}`);
+        continue;
+      }
+
+      match = line.match(/^[\uff08(]([\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\d]+)[\uff09)]\s*(.+)$/);
+      if (match) {
+        pushBlock(`### ${normalizeMarkdownLine(match[2])}`);
+        continue;
+      }
+
+      match = line.match(/^(.{1,24}?)[\uff1a:]\s*$/);
+      if (match) {
+        pushBlock(`### ${normalizeMarkdownLine(match[1])}`);
+        continue;
+      }
+
+      match = line.match(/^(.{1,16}?)[\uff1a:]\s*(.+)$/);
+      if (match && !/[\u3002\uff01\uff1f.!?]$/.test(match[1])) {
+        pushBlock(`- **${normalizeMarkdownLine(match[1])}**：${normalizeMarkdownLine(match[2])}`);
+        continue;
+      }
+
+      paragraphBuffer.push(normalizeMarkdownLine(line));
+    }
+
+    flushParagraph();
+
+    return blocks.join("\n\n").trim();
+  }
+
+  function buildMarkdownPreview(markdown) {
+    return String(markdown || "")
+      .split(/\n+/)
+      .slice(0, 6)
+      .join("\n");
+  }
+
+  function parseMindmapLabel(line) {
+    const trimmed = String(line || "").trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    if (/^root\b/i.test(trimmed)) {
+      const match = trimmed.match(/^root(?:\((.+)\)|\s+(.+))$/i);
+      return (match?.[1] || match?.[2] || "主题").trim();
+    }
+
+    const parenMatch = trimmed.match(/^[a-z0-9_-]+\((.+)\)$/i);
+    if (parenMatch?.[1]) {
+      return parenMatch[1].trim();
+    }
+
+    return trimmed.replace(/^[:\-*#\s]+/, "").trim();
+  }
+
+  function parseMindmapMermaid(source) {
+    const lines = String(source || "")
+      .replace(/```mermaid|```/gi, "")
+      .split("\n")
+      .map((line) => line.replace(/\t/g, "  "))
+      .filter((line) => line.trim());
+
+    const rootLineIndex = lines.findIndex((line) => /^root\b/i.test(line.trim()));
+    if (rootLineIndex < 0) {
+      return null;
+    }
+
+    const root = {
+      label: parseMindmapLabel(lines[rootLineIndex]),
+      children: []
+    };
+
+    const stack = [{ depth: -1, node: root }];
+    for (const rawLine of lines.slice(rootLineIndex + 1)) {
+      const trimmed = rawLine.trim();
+      if (!trimmed || /^mindmap$/i.test(trimmed)) {
+        continue;
+      }
+
+      const depth = Math.max(0, Math.floor((rawLine.match(/^ */)?.[0].length || 0) / 2));
+      const node = {
+        label: parseMindmapLabel(trimmed),
+        children: []
+      };
+      if (!node.label) {
+        continue;
+      }
+
+      while (stack.length && stack[stack.length - 1].depth >= depth) {
+        stack.pop();
+      }
+
+      const parent = stack[stack.length - 1]?.node || root;
+      parent.children.push(node);
+      stack.push({ depth, node });
+    }
+
+    return root;
+  }
+
+  function layoutMindmapTree(rootNode) {
+    if (!rootNode) {
+      return null;
+    }
+
+    const nodes = [];
+    const links = [];
+    const branchColors = ["#2f6fed", "#e05a47", "#8358ff", "#119d67", "#d57d12", "#cc4fa8"];
+    const siblingGap = 34;
+    const horizontalGap = 210;
+    const rootGap = 126;
+    const padding = 54;
+
+    const countUnits = (text) =>
+      Array.from(String(text || "")).reduce((sum, char) => {
+        if (/\s/.test(char)) {
+          return sum + 0.35;
+        }
+        return sum + (/[\u0000-\u00ff]/.test(char) ? 0.62 : 1);
+      }, 0);
+
+    const splitLabel = (label, maxUnits = 16) => {
+      const source = String(label || "").trim();
+      if (!source) {
+        return [""];
+      }
+
+      const tokens = /\s/.test(source)
+        ? source.split(/(\s+)/).filter(Boolean)
+        : Array.from(source);
+      const lines = [];
+      let current = "";
+      let currentUnits = 0;
+
+      for (const token of tokens) {
+        const tokenUnits = countUnits(token);
+        if (current && currentUnits + tokenUnits > maxUnits) {
+          lines.push(current.trim());
+          current = token;
+          currentUnits = tokenUnits;
+        } else {
+          current += token;
+          currentUnits += tokenUnits;
+        }
+      }
+
+      if (current.trim()) {
+        lines.push(current.trim());
+      }
+
+      return lines.slice(0, 4);
+    };
+
+    const prepareNode = (node, depth = 0) => {
+      node.depth = depth;
+      node.lines = splitLabel(node.label, depth === 0 ? 15 : 17);
+      const maxUnits = Math.max(...node.lines.map((line) => countUnits(line)), 5);
+      node.width = Math.max(depth === 0 ? 190 : 136, Math.min(depth === 0 ? 300 : 250, 40 + maxUnits * 13));
+      node.height = Math.max(depth === 0 ? 62 : 50, 18 + node.lines.length * (depth === 0 ? 21 : 18));
+
+      node.children.forEach((child) => prepareNode(child, depth + 1));
+
+      if (!node.children.length) {
+        node.subtreeHeight = node.height;
+        return;
+      }
+
+      const childrenHeight =
+        node.children.reduce((sum, child) => sum + child.subtreeHeight, 0) +
+        siblingGap * Math.max(0, node.children.length - 1);
+      node.subtreeHeight = Math.max(node.height, childrenHeight);
+    };
+
+    const layoutSubtree = (node, side, depth, top, centerX) => {
+      node.side = side;
+      node.x =
+        side === "right"
+          ? centerX + rootGap + (depth - 1) * horizontalGap
+          : centerX - rootGap - (depth - 1) * horizontalGap - node.width;
+      node.y = top + (node.subtreeHeight - node.height) / 2;
+      nodes.push(node);
+
+      if (!node.children.length) {
+        return;
+      }
+
+      const childrenTotalHeight =
+        node.children.reduce((sum, child) => sum + child.subtreeHeight, 0) +
+        siblingGap * Math.max(0, node.children.length - 1);
+      let childTop = node.y + node.height / 2 - childrenTotalHeight / 2;
+
+      node.children.forEach((child) => {
+        child.branchIndex = node.branchIndex;
+        links.push({
+          from: node,
+          to: child,
+          branchIndex: child.branchIndex
+        });
+        layoutSubtree(child, side, depth + 1, childTop, centerX);
+        childTop += child.subtreeHeight + siblingGap;
+      });
+    };
+
+    prepareNode(rootNode, 0);
+
+    const leftChildren = [];
+    const rightChildren = [];
+    let leftLoad = 0;
+    let rightLoad = 0;
+
+    rootNode.children.forEach((child, index) => {
+      child.branchIndex = index;
+      const weight = child.subtreeHeight + siblingGap;
+      if (leftLoad <= rightLoad) {
+        leftChildren.push(child);
+        leftLoad += weight;
+      } else {
+        rightChildren.push(child);
+        rightLoad += weight;
+      }
+    });
+
+    const sumHeight = (items) =>
+      items.length
+        ? items.reduce((sum, child) => sum + child.subtreeHeight, 0) + siblingGap * (items.length - 1)
+        : 0;
+
+    const leftHeight = sumHeight(leftChildren);
+    const rightHeight = sumHeight(rightChildren);
+    const totalHeight = Math.max(420, leftHeight, rightHeight, rootNode.height) + padding * 2;
+    const centerX = 0;
+
+    rootNode.x = centerX - rootNode.width / 2;
+    rootNode.y = totalHeight / 2 - rootNode.height / 2;
+    nodes.push(rootNode);
+
+    let leftTop = totalHeight / 2 - leftHeight / 2;
+    leftChildren.forEach((child) => {
+      links.push({ from: rootNode, to: child, branchIndex: child.branchIndex });
+      layoutSubtree(child, "left", 1, leftTop, centerX);
+      leftTop += child.subtreeHeight + siblingGap;
+    });
+
+    let rightTop = totalHeight / 2 - rightHeight / 2;
+    rightChildren.forEach((child) => {
+      links.push({ from: rootNode, to: child, branchIndex: child.branchIndex });
+      layoutSubtree(child, "right", 1, rightTop, centerX);
+      rightTop += child.subtreeHeight + siblingGap;
+    });
+
+    const minX = Math.min(...nodes.map((node) => node.x)) - padding;
+    const minY = Math.min(...nodes.map((node) => node.y)) - padding;
+    const maxX = Math.max(...nodes.map((node) => node.x + node.width)) + padding;
+    const maxY = Math.max(...nodes.map((node) => node.y + node.height)) + padding;
+
+    nodes.forEach((node) => {
+      node.x -= minX;
+      node.y -= minY;
+    });
+
+    return {
+      nodes,
+      links,
+      width: Math.max(880, maxX - minX),
+      height: Math.max(460, maxY - minY),
+      branchColors
+    };
+  }
+
+  function renderMindmapSvg(source, modal = false) {
+    const tree = parseMindmapMermaid(source);
+    const layout = layoutMindmapTree(tree);
+    if (!layout) {
+      return `<div class="semrush-coach-mindmap-empty">脑图暂时无法渲染</div>`;
+    }
+
+    const svg = `
+      <svg class="semrush-coach-mindmap-svg${modal ? " semrush-coach-mindmap-svg-modal" : ""}" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="脑图预览">
+        ${layout.links
+          .map((link) => {
+            const isRight = (link.to.side || "right") === "right";
+            const startX = isRight ? link.from.x + link.from.width : link.from.x;
+            const startY = link.from.y + link.from.height / 2;
+            const endX = isRight ? link.to.x : link.to.x + link.to.width;
+            const endY = link.to.y + link.to.height / 2;
+            const curve = Math.max(42, Math.abs(endX - startX) * 0.45);
+            const stroke = layout.branchColors[link.branchIndex % layout.branchColors.length];
+            const cp1x = isRight ? startX + curve : startX - curve;
+            const cp2x = isRight ? endX - curve : endX + curve;
+            return `<path d="M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}" fill="none" stroke="${stroke}" stroke-width="${link.from.depth === 0 ? 3.5 : 2.3}" stroke-linecap="round"/>`;
+          })
+          .join("")}
+        ${layout.nodes
+          .map((node) => {
+            const fill = node.depth === 0 ? "#fff2c2" : "#ffffff";
+            const stroke = node.depth === 0 ? "#f0c96b" : "rgba(64, 78, 72, 0.14)";
+            const textColor = "#20312c";
+            const fontSize = node.depth === 0 ? 18 : 14;
+            const lineHeight = node.depth === 0 ? 21 : 18;
+            const textStartY =
+              node.y + node.height / 2 - ((node.lines.length - 1) * lineHeight) / 2 + 5;
+            return `
+              <g>
+                <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${node.depth === 0 ? 20 : 16}" fill="${fill}" stroke="${stroke}" stroke-width="1.2"></rect>
+                <text fill="${textColor}" font-size="${fontSize}" font-weight="${node.depth === 0 ? 700 : 500}" font-family="Manrope, PingFang SC, Microsoft YaHei, sans-serif">
+                  ${node.lines
+                    .map(
+                      (line, index) =>
+                        `<tspan x="${node.x + 14}" y="${textStartY + index * lineHeight}">${escapeHtml(line)}</tspan>`
+                    )
+                    .join("")}
+                </text>
+              </g>
+            `;
+          })
+          .join("")}
+      </svg>
+    `;
+
+    return `
+      <div class="semrush-coach-mindmap-viewer${modal ? " semrush-coach-mindmap-viewer-modal" : ""}" data-width="${layout.width}" data-height="${layout.height}">
+        <div class="semrush-coach-mindmap-toolbar">
+          <span class="semrush-coach-mindmap-hint">滚轮缩放，拖拽移动</span>
+          <div class="semrush-coach-mindmap-toolbar-actions">
+            <button class="semrush-coach-mindmap-tool" data-action="zoom-out" type="button">-</button>
+            <button class="semrush-coach-mindmap-tool semrush-coach-mindmap-tool-label" data-action="fit" type="button">适应</button>
+            <button class="semrush-coach-mindmap-tool" data-action="zoom-in" type="button">+</button>
+            ${modal ? "" : `<button class="semrush-coach-mindmap-tool semrush-coach-mindmap-tool-label" data-action="fullscreen" data-source="${escapeAttribute(source)}" type="button">全屏</button>`}
+          </div>
+        </div>
+        <div class="semrush-coach-mindmap-canvas${modal ? " semrush-coach-mindmap-canvas-modal" : ""}">
+          <div class="semrush-coach-mindmap-stage-wrap">
+            <div class="semrush-coach-mindmap-stage">
+              ${svg}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function updateMindmapTransform(viewer, nextState) {
+    const stage = viewer.querySelector(".semrush-coach-mindmap-stage");
+    if (!stage) {
+      return;
+    }
+
+    const stateRef = viewer.__mindmapState || (viewer.__mindmapState = {});
+    stateRef.scale = nextState.scale;
+    stateRef.x = nextState.x;
+    stateRef.y = nextState.y;
+    stage.style.transform = `translate(${nextState.x}px, ${nextState.y}px) scale(${nextState.scale})`;
+  }
+
+  function fitMindmapViewer(viewer) {
+    const canvas = viewer.querySelector(".semrush-coach-mindmap-canvas");
+    const width = Number(viewer.dataset.width) || 800;
+    const height = Number(viewer.dataset.height) || 480;
+    if (!canvas) {
+      return;
+    }
+
+    const scale = Math.min(
+      1,
+      Math.max(0.42, Math.min((canvas.clientWidth - 24) / width, (canvas.clientHeight - 24) / height))
+    );
+    const x = (canvas.clientWidth - width * scale) / 2;
+    const y = (canvas.clientHeight - height * scale) / 2;
+    updateMindmapTransform(viewer, { scale, x, y });
+  }
+
+  function zoomMindmapViewer(viewer, delta, anchorPoint = null) {
+    const canvas = viewer.querySelector(".semrush-coach-mindmap-canvas");
+    const stateRef = viewer.__mindmapState;
+    if (!canvas || !stateRef) {
+      return;
+    }
+
+    const nextScale = Math.max(0.35, Math.min(2.4, stateRef.scale * delta));
+    if (Math.abs(nextScale - stateRef.scale) < 0.001) {
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const point = anchorPoint || { x: rect.width / 2, y: rect.height / 2 };
+    const worldX = (point.x - stateRef.x) / stateRef.scale;
+    const worldY = (point.y - stateRef.y) / stateRef.scale;
+    const x = point.x - worldX * nextScale;
+    const y = point.y - worldY * nextScale;
+    updateMindmapTransform(viewer, { scale: nextScale, x, y });
+  }
+
+  function initializeMindmapViewer(viewer) {
+    if (!viewer || viewer.dataset.mindmapReady === "true") {
+      return;
+    }
+    viewer.dataset.mindmapReady = "true";
+
+    const canvas = viewer.querySelector(".semrush-coach-mindmap-canvas");
+    if (!canvas) {
+      return;
+    }
+
+    fitMindmapViewer(viewer);
+
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    canvas.addEventListener(
+      "wheel",
+      (event) => {
+        event.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        zoomMindmapViewer(viewer, event.deltaY < 0 ? 1.12 : 0.9, {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top
+        });
+      },
+      { passive: false }
+    );
+
+    canvas.addEventListener("pointerdown", (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest(".semrush-coach-mindmap-tool")) {
+        return;
+      }
+      dragging = true;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      canvas.classList.add("semrush-coach-mindmap-canvas-dragging");
+      canvas.setPointerCapture?.(event.pointerId);
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      if (!dragging) {
+        return;
+      }
+      const stateRef = viewer.__mindmapState;
+      updateMindmapTransform(viewer, {
+        scale: stateRef.scale,
+        x: stateRef.x + (event.clientX - lastX),
+        y: stateRef.y + (event.clientY - lastY)
+      });
+      lastX = event.clientX;
+      lastY = event.clientY;
+    });
+
+    const stopDragging = (event) => {
+      if (!dragging) {
+        return;
+      }
+      dragging = false;
+      canvas.classList.remove("semrush-coach-mindmap-canvas-dragging");
+      canvas.releasePointerCapture?.(event.pointerId);
+    };
+
+    canvas.addEventListener("pointerup", stopDragging);
+    canvas.addEventListener("pointercancel", stopDragging);
+    canvas.addEventListener("pointerleave", stopDragging);
+  }
+
+  function initializeMindmapViewers(scope) {
+    (scope || document)
+      .querySelectorAll(".semrush-coach-mindmap-viewer")
+      .forEach((viewer) => initializeMindmapViewer(viewer));
+  }
+
+  function openMindmapModal(source) {
+    if (!mindmapModalEl || !mindmapModalBodyEl) {
+      return;
+    }
+    mindmapModalBodyEl.innerHTML = renderMindmapSvg(source, true);
+    mindmapModalEl.classList.remove("semrush-coach-hidden");
+    mindmapModalEl.setAttribute("aria-hidden", "false");
+    initializeMindmapViewers(mindmapModalEl);
+  }
+
+  function closeMindmapModal() {
+    if (!mindmapModalEl || !mindmapModalBodyEl) {
+      return;
+    }
+    mindmapModalEl.classList.add("semrush-coach-hidden");
+    mindmapModalEl.setAttribute("aria-hidden", "true");
+    mindmapModalBodyEl.innerHTML = "";
+  }
+
   async function revealAssistantMessage(finalData) {
     const entry = {
       role: "assistant",
@@ -292,11 +890,12 @@
   }
 
   function fillSettingsForm() {
-    const defaultUrl = state.settings.apiUrl || PROVIDERS.zhipu.url;
+    const defaultUrl = state.settings.apiUrl || PROVIDERS.qianwen.url;
+    settingsFormEls.trialApiUrl.value = state.settings.trialApiUrl || "";
     settingsFormEls.apiUrl.value = defaultUrl;
     settingsFormEls.apiKey.value = state.settings.apiKey || "";
     settingsFormEls.allowedHosts.value = parseAllowedHosts(state.settings.allowedHosts).join("\n");
-    settingsStatusEl.textContent = state.settings.remoteEnabled ? "远程模型已启用。" : "远程模型未启用。";
+    settingsStatusEl.textContent = formatTrialStatus(state.settings);
     
     // 匹配 Provider
     let matchedProvider = "custom";
@@ -362,6 +961,35 @@
       return settingsFormEls.modelInput.value.trim();
     }
     return modelSelectEl.value;
+  }
+
+  function hasTrialAccess(settings = state.settings) {
+    return Boolean(settings.remoteEnabled && settings.trialEnabled && settings.trialApiUrl);
+  }
+
+  function hasUserApiAccess(settings = state.settings) {
+    return Boolean(settings.remoteEnabled && settings.apiUrl && settings.apiKey);
+  }
+
+  function hasConfiguredRemoteAccess(settings = state.settings) {
+    return hasTrialAccess(settings) || hasUserApiAccess(settings);
+  }
+
+  function formatTrialStatus(settings = state.settings) {
+    const trialStatus = settings.trialStatus;
+    if (trialStatus?.enabled && Number.isFinite(trialStatus.remainingFreeUses)) {
+      return `免费体验剩余 ${trialStatus.remainingFreeUses}/${trialStatus.freeTrialLimit || settings.freeTrialLimit || 15} 次。`;
+    }
+    if (trialStatus?.error) {
+      return `体验服务状态：${trialStatus.error}`;
+    }
+    if (hasTrialAccess(settings)) {
+      return "已开启免费体验通道，优先使用体验额度。";
+    }
+    if (hasUserApiAccess(settings)) {
+      return "已配置你自己的 API Key。";
+    }
+    return "请先填写体验服务地址，或填写你自己的 API Key。";
   }
 
   function getCurrentSiteDisplayName() {
@@ -441,26 +1069,32 @@
           `;
         }
 
-        const answerParagraphs = String(item.answer || "")
-          .split(/\n+/)
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((line) => `<p>${escapeHtml(line)}</p>`)
-          .join("");
+        const answerParagraphs = item.renderAsMindmap
+          ? `
+            <div class="semrush-coach-mindmap-wrap">
+              ${renderMindmapSvg(item.answer || "")}
+            </div>
+          `
+          : item.renderAsCode
+              ? `<pre class="semrush-coach-code-block"><code>${escapeHtml(String(item.answer || ""))}</code></pre>`
+              : String(item.answer || "")
+                  .split(/\n+/)
+                  .map((line) => line.trim())
+                  .filter(Boolean)
+                  .map((line) => `<p>${escapeHtml(line)}</p>`)
+                  .join("");
 
-        const steps = (item.suggestedNextSteps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("");
-        
-        let fullAnswerText = item.answer || "";
-        if (item.suggestedNextSteps?.length) {
-          fullAnswerText += "\n\n建议下一步：\n" + item.suggestedNextSteps.map(s => "- " + s).join("\n");
-        }
-        const encodedAnswer = escapeHtml(fullAnswerText);
+        const steps = item.renderAsMindmap ? "" : (item.suggestedNextSteps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+        const encodedAnswer = escapeAttribute(item.answer || "");
+        const actionButton = item.renderAsMindmap
+          ? `<button class="semrush-coach-mindmap-open-btn" data-answer="${encodedAnswer}" type="button">全屏查看</button>`
+          : `<button class="semrush-coach-copy-btn" data-answer="${encodedAnswer}" title="一键复制">📋 复制</button>`;
 
         return `
           <article class="semrush-coach-card">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap: 8px;">
               <p class="semrush-coach-card-title" style="margin:0;">${escapeHtml(item.pageSummary || "当前页面")}</p>
-              <button class="semrush-coach-copy-btn" data-answer="${encodedAnswer}" title="一键复制">📋 复制</button>
+              ${actionButton}
             </div>
             ${answerParagraphs || "<p>暂时没有可展示的回答。</p>"}
             ${steps ? `<ol class="semrush-coach-steps">${steps}</ol>` : ""}
@@ -468,6 +1102,7 @@
         `;
       })
       .join("");
+    initializeMindmapViewers(historyEl);
     scrollHistoryToBottom();
   }
 
@@ -522,6 +1157,178 @@
     return {
       ...baseSnapshot,
       locale: document.documentElement.lang || "zh-CN"
+    };
+  }
+
+  function collectVisibleTextBySelectors(selectors, limit, filter) {
+    const results = [];
+    const seen = new Set();
+    const elements = Array.from(document.querySelectorAll(selectors));
+
+    for (const element of elements) {
+      if (!(element instanceof HTMLElement)) {
+        continue;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const text = String(element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+      if (!text || text.length < 2) {
+        continue;
+      }
+      if (rect.width <= 0 || rect.height <= 0) {
+        continue;
+      }
+      if (filter && !filter(text, element)) {
+        continue;
+      }
+      if (seen.has(text)) {
+        continue;
+      }
+
+      seen.add(text);
+      results.push(text.slice(0, 240));
+      if (results.length >= limit) {
+        break;
+      }
+    }
+
+    return results;
+  }
+
+  function collectCurrentViewportSummaryChunk(scrollY) {
+    const headings = collectVisibleTextBySelectors(
+      "h1, h2, h3, h4, [role='heading']",
+      12
+    );
+    const keyPoints = collectVisibleTextBySelectors(
+      "strong, b, summary, blockquote, .highlight, .callout, .tip, .note",
+      12
+    );
+    const paragraphs = collectVisibleTextBySelectors(
+      "p, article li, section li, main li",
+      18,
+      (text) => text.length >= 12
+    );
+    const listItems = collectVisibleTextBySelectors(
+      "ul li, ol li",
+      24,
+      (text) => text.length >= 4
+    );
+
+    const tables = Array.from(document.querySelectorAll("table"))
+      .map((table) => {
+        const rows = Array.from(table.querySelectorAll("tr"))
+          .slice(0, 6)
+          .map((row) =>
+            Array.from(row.querySelectorAll("th, td"))
+              .map((cell) => String(cell.innerText || cell.textContent || "").replace(/\s+/g, " ").trim())
+              .filter(Boolean)
+              .slice(0, 6)
+          )
+          .filter((row) => row.length);
+
+        if (!rows.length) {
+          return null;
+        }
+
+        const caption = table.querySelector("caption")?.textContent?.trim() || "";
+        return {
+          caption: caption.slice(0, 120),
+          headers: rows[0] || [],
+          rows: rows.slice(1, 5)
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 4);
+
+    return {
+      y: Math.round(scrollY),
+      headings,
+      keyPoints,
+      paragraphs,
+      listItems,
+      tables,
+      texts: [...headings, ...keyPoints, ...paragraphs, ...listItems].slice(0, 20)
+    };
+  }
+
+  async function collectScrollablePageSummarySource() {
+    const originalY = window.scrollY;
+    const doc = document.documentElement;
+    const viewportHeight = window.innerHeight || 900;
+    const maxScrollY = Math.max(0, (doc?.scrollHeight || document.body.scrollHeight || 0) - viewportHeight);
+    const step = Math.max(480, Math.floor(viewportHeight * 0.85));
+    const positions = [];
+
+    for (let y = 0; y <= maxScrollY; y += step) {
+      positions.push(y);
+    }
+    if (!positions.length || positions[positions.length - 1] !== maxScrollY) {
+      positions.push(maxScrollY);
+    }
+
+    const samples = [];
+    const seenTexts = new Set();
+    const headings = [];
+    const keyPoints = [];
+    const paragraphs = [];
+    const listItems = [];
+    const tables = [];
+
+    const mergeUnique = (target, source, limit, bucket) => {
+      for (const item of source || []) {
+        const normalized = String(item || "").trim();
+        const key = `${bucket}:${normalized}`;
+        if (!normalized || seenTexts.has(key)) {
+          continue;
+        }
+        if (target.includes(normalized)) {
+          continue;
+        }
+        target.push(normalized);
+        seenTexts.add(key);
+        if (target.length >= limit) {
+          break;
+        }
+      }
+    };
+
+    try {
+      for (const y of positions.slice(0, 12)) {
+        window.scrollTo(0, y);
+        await wait(220);
+        const chunk = collectCurrentViewportSummaryChunk(y);
+        samples.push({ y: chunk.y, texts: chunk.texts });
+        mergeUnique(headings, chunk.headings, 24, "heading");
+        mergeUnique(keyPoints, chunk.keyPoints, 30, "keyPoint");
+        mergeUnique(paragraphs, chunk.paragraphs, 36, "paragraph");
+        mergeUnique(listItems, chunk.listItems, 40, "listItem");
+
+        for (const table of chunk.tables) {
+          const signature = JSON.stringify(table);
+          if (!tables.some((item) => JSON.stringify(item) === signature)) {
+            tables.push(table);
+          }
+          if (tables.length >= 6) {
+            break;
+          }
+        }
+      }
+    } finally {
+      window.scrollTo(0, originalY);
+      await wait(120);
+    }
+
+    return {
+      pageHeight: doc?.scrollHeight || document.body.scrollHeight || 0,
+      viewportHeight,
+      sampleCount: samples.length,
+      headings,
+      keyPoints,
+      paragraphs,
+      listItems,
+      tables,
+      samples
     };
   }
 
@@ -672,7 +1479,9 @@
     settingsStatusEl.textContent = "正在保存…";
     const payload = {
       remoteEnabled: true,
+      trialEnabled: true,
       fallbackToLocal: true,
+      trialApiUrl: settingsFormEls.trialApiUrl.value.trim(),
       apiUrl: settingsFormEls.apiUrl.value.trim(),
       model: getActiveModel(),
       apiKey: settingsFormEls.apiKey.value.trim(),
@@ -696,7 +1505,9 @@
     renderQuickPrompts(QUICK_PROMPTS);
     updatePageChip(getSnapshot());
     setModeLabel(state.settings.remoteEnabled ? "remote" : "local");
-    settingsStatusEl.textContent = state.siteEnabled ? "保存成功。" : "已保存，但当前网站还没被启用。";
+    settingsStatusEl.textContent = state.siteEnabled
+      ? formatTrialStatus(state.settings)
+      : "已保存，但当前网站还没被启用。";
 
     if (collapseAfterSave) {
       window.setTimeout(() => toggleSettings(false), 500);
@@ -728,7 +1539,11 @@
       return;
     }
 
-    settingsStatusEl.textContent = `连接成功：${response.data.model || state.settings.model}`;
+    if (response.data?.mode === "trial") {
+      settingsStatusEl.textContent = `体验服务可用，剩余 ${response.data.remainingFreeUses}/${response.data.freeTrialLimit} 次。`;
+    } else {
+      settingsStatusEl.textContent = `连接成功：${response.data.model || state.settings.model}`;
+    }
     window.setTimeout(() => toggleSettings(false), 800);
   }
 
@@ -739,12 +1554,12 @@
       return;
     }
 
-    if (!state.settings.remoteEnabled || !state.settings.apiKey) {
+    if (!hasConfiguredRemoteAccess()) {
       state.history.push({
         role: "assistant",
         pageSummary: "提示",
-        answer: "提取 UI 规范需要开启远程模型并填写 API Key。请先在设置中配置。",
-        suggestedNextSteps: ["点击右上角'远程模型 API'按钮配置"],
+        answer: "提取 UI 规范需要先配置体验服务地址，或者填写你自己的 API Key。",
+        suggestedNextSteps: ["点击右上角“体验 / API 设置”完成配置"],
         confidence: 0.9,
         elementHints: []
       });
@@ -955,12 +1770,12 @@
       return;
     }
     
-    if (!state.settings.remoteEnabled || !state.settings.apiKey) {
+    if (!hasConfiguredRemoteAccess()) {
       state.history.push({
         role: "assistant",
         pageSummary: "提示",
-        answer: "生成 PRD 需要开启远程模型并填写 API Key。请先在设置中配置。",
-        suggestedNextSteps: ["点击右上角'远程模型 API'按钮配置"],
+        answer: "生成 PRD 需要先配置体验服务地址，或者填写你自己的 API Key。",
+        suggestedNextSteps: ["点击右上角“体验 / API 设置”完成配置"],
         confidence: 0.9,
         elementHints: []
       });
@@ -1072,6 +1887,243 @@
       formEl.style.display = "";
       setLoading(false);
     }
+  }
+
+  async function generatePageSummaryAndMindmap() {
+    if (!state.siteEnabled) {
+      renderDisabledSiteCard();
+      openPanel(true);
+      return;
+    }
+
+    if (!hasConfiguredRemoteAccess()) {
+      state.history.push({
+        role: "assistant",
+        pageSummary: "提示",
+        answer: "生成总结和脑图需要先配置体验服务地址，或者填写你自己的 API Key。",
+        suggestedNextSteps: ["点击右上角“体验 / API 设置”完成配置"],
+        confidence: 0.9,
+        elementHints: []
+      });
+      renderHistory();
+      openPanel(true);
+      return;
+    }
+
+    const snapshot = getSnapshot();
+    updatePageChip(snapshot);
+    setLoading(true);
+
+    if (generateSummaryButtonEl) {
+      generateSummaryButtonEl.disabled = true;
+      generateSummaryButtonEl.textContent = "🧠 总结中…";
+    }
+
+    state.history.push({
+      role: "user",
+      text: "🧠 请帮我总结当前页面并同步生成脑图"
+    });
+    renderHistory();
+
+    const progressSteps = [
+      "正在滚动采样页面内容…",
+      "正在提取整页要点、列表和表格…",
+      "正在调用 AI 生成总结与脑图…",
+      "正在整理结果…"
+    ];
+
+    const progressCard = document.createElement("article");
+    progressCard.className = "semrush-coach-card";
+    progressCard.innerHTML = `
+      <p class="semrush-coach-card-title">页面总结与脑图生成中</p>
+      <p class="semrush-coach-progress-step">${progressSteps[0]}</p>
+      <div class="semrush-coach-progress-bar-wrap">
+        <div class="semrush-coach-progress-bar" style="width: 8%"></div>
+      </div>
+    `;
+    historyEl.appendChild(progressCard);
+    scrollHistoryToBottom();
+
+    const progressBar = progressCard.querySelector(".semrush-coach-progress-bar");
+    const progressStepEl = progressCard.querySelector(".semrush-coach-progress-step");
+    const updateProgress = (step, percent) => {
+      if (progressStepEl) {
+        progressStepEl.textContent = progressSteps[step] || "";
+      }
+      if (progressBar) {
+        progressBar.style.width = `${percent}%`;
+      }
+      scrollHistoryToBottom();
+    };
+
+    let screenshotData = null;
+    let summarySource = null;
+    let progressTimer;
+
+    try {
+      summarySource = await collectScrollablePageSummarySource();
+      updateProgress(1, 28);
+
+      try {
+        const captureRes = await chrome.runtime.sendMessage({ type: "SEMRUSH_COACH_CAPTURE_TAB" });
+        if (captureRes?.ok && captureRes.dataUrl) {
+          screenshotData = await compressImage(captureRes.dataUrl, 1200, 0.7);
+        }
+      } catch (e) {
+        console.warn("页面总结截图失败:", e);
+      }
+
+      updateProgress(2, 44);
+      progressTimer = window.setInterval(() => {
+        const current = parseFloat(progressBar?.style.width || "44") || 44;
+        if (current < 92 && progressBar) {
+          progressBar.style.width = `${current + 1.1}%`;
+        }
+      }, 900);
+
+      const response = await chrome.runtime.sendMessage({
+        type: "SEMRUSH_COACH_PAGE_SUMMARY",
+        payload: {
+          pageSnapshot: snapshot,
+          screenshot: screenshotData ? { dataUrl: screenshotData } : null,
+          summarySource
+        }
+      });
+
+      window.clearInterval(progressTimer);
+      updateProgress(3, 98);
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "插件后台请求失败");
+      }
+
+      const data = response.data || {};
+      const summaryMarkdown = String(data.summaryMarkdown || "").trim();
+      const mindmapMermaid = String(data.mindmapMermaid || "").trim();
+
+      if (summaryMarkdown) {
+        state.history.push({
+          role: "assistant",
+          pageSummary: data.pageSummary || `页面总结 · ${snapshot.title || snapshot.url}`,
+          answer: summaryMarkdown,
+          suggestedNextSteps: [],
+          confidence: 0.94,
+          elementHints: [],
+          renderAsCode: true
+        });
+      }
+
+      if (mindmapMermaid) {
+        state.history.push({
+          role: "assistant",
+          pageSummary: "页面脑图",
+          answer: mindmapMermaid,
+          suggestedNextSteps: [],
+          confidence: 0.92,
+          elementHints: [],
+          renderAsMindmap: true
+        });
+      }
+
+      renderHistory();
+      openPanel(true);
+    } catch (error) {
+      window.clearInterval(progressTimer);
+      state.history.push({
+        role: "assistant",
+        pageSummary: "页面总结生成失败",
+        answer: `生成失败：${error instanceof Error ? error.message : "未知错误"}`,
+        suggestedNextSteps: [
+          "检查 API 配置是否可用",
+          "如果页面是懒加载内容，先手动滚动一遍再重试"
+        ],
+        confidence: 0.15,
+        elementHints: []
+      });
+      renderHistory();
+      openPanel(true);
+    } finally {
+      window.clearInterval(progressTimer);
+      progressCard?.remove();
+      setLoading(false);
+      if (generateSummaryButtonEl) {
+        generateSummaryButtonEl.disabled = false;
+        generateSummaryButtonEl.textContent = "🧠 总结+脑图";
+      }
+    }
+  }
+
+  async function pasteTextFromClipboard() {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      if (!clipboardText.trim()) {
+        state.history.push({
+          role: "assistant",
+          pageSummary: "粘贴失败",
+          answer: "剪贴板里暂时没有可用文本。你可以先复制一段文字，再点一次“粘贴文本”。",
+          suggestedNextSteps: ["复制文本后重新点击“粘贴文本”"],
+          confidence: 0.92,
+          elementHints: []
+        });
+        renderHistory();
+        openPanel(true);
+        return;
+      }
+
+      inputEl.value = clipboardText;
+      inputEl.focus();
+      inputEl.setSelectionRange(clipboardText.length, clipboardText.length);
+      openPanel(true);
+    } catch (error) {
+      state.history.push({
+        role: "assistant",
+        pageSummary: "粘贴失败",
+        answer: "当前页面不允许直接读取剪贴板。你可以手动粘贴到输入框里，然后点“转 Markdown”。",
+        suggestedNextSteps: ["手动粘贴文本", "点击“转 Markdown”生成结果"],
+        confidence: 0.6,
+        elementHints: []
+      });
+      renderHistory();
+      openPanel(true);
+    }
+  }
+
+  async function formatInputAsMarkdown() {
+    const rawText = inputEl.value.trim();
+    if (!rawText) {
+      state.history.push({
+        role: "assistant",
+        pageSummary: "缺少内容",
+        answer: "先粘贴一段文字，再点击“转 Markdown”。",
+        suggestedNextSteps: ["点击“粘贴文本”", "或者手动把文字粘贴进输入框"],
+        confidence: 0.95,
+        elementHints: []
+      });
+      renderHistory();
+      openPanel(true);
+      return;
+    }
+
+    const markdown = convertPlainTextToMarkdown(rawText);
+    inputEl.value = markdown || rawText;
+    state.history.push({
+      role: "user",
+      text: buildMarkdownPreview(rawText) || "已粘贴待转换文本"
+    });
+    state.history.push({
+      role: "assistant",
+      pageSummary: "Markdown 转换结果",
+      answer: markdown || rawText,
+      suggestedNextSteps: [
+        "点击右上角复制按钮，直接复制 Markdown",
+        "如需继续提问，也可以在输入框里继续编辑文本"
+      ],
+      confidence: 0.96,
+      elementHints: [],
+      renderAsCode: true
+    });
+    renderHistory();
+    openPanel(true);
   }
 
   async function askQuestion(question) {
@@ -1198,6 +2250,13 @@
   });
 
   closeButton.addEventListener("click", closePanel);
+  mindmapModalCloseEl?.addEventListener("click", closeMindmapModal);
+  mindmapModalEl?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.classList.contains("semrush-coach-mindmap-modal-backdrop")) {
+      closeMindmapModal();
+    }
+  });
   settingsToggleEl.addEventListener("click", () => {
     toggleSettings(!state.settingsOpen);
     openPanel(true);
@@ -1207,6 +2266,12 @@
   });
   addCurrentSiteEl.addEventListener("click", () => {
     addCurrentSite();
+  });
+  pasteTextButtonEl.addEventListener("click", () => {
+    pasteTextFromClipboard();
+  });
+  formatMarkdownButtonEl.addEventListener("click", () => {
+    formatInputAsMarkdown();
   });
   attachButtonEl.addEventListener("click", () => {
     fileInputEl.click();
@@ -1223,6 +2288,12 @@
   if (generatePRDBtn) {
     generatePRDBtn.addEventListener("click", () => {
       generatePRD();
+    });
+  }
+
+  if (generateSummaryButtonEl) {
+    generateSummaryButtonEl.addEventListener("click", () => {
+      generatePageSummaryAndMindmap();
     });
   }
 
@@ -1304,6 +2375,28 @@
       return;
     }
 
+    const mindmapBtn = target.closest(".semrush-coach-mindmap-open-btn");
+    if (mindmapBtn) {
+      openMindmapModal(mindmapBtn.getAttribute("data-answer") || "");
+      return;
+    }
+
+    const mindmapTool = target.closest(".semrush-coach-mindmap-tool");
+    if (mindmapTool) {
+      const viewer = mindmapTool.closest(".semrush-coach-mindmap-viewer");
+      const action = mindmapTool.getAttribute("data-action");
+      if (viewer && action === "fit") {
+        fitMindmapViewer(viewer);
+      } else if (viewer && action === "zoom-in") {
+        zoomMindmapViewer(viewer, 1.15);
+      } else if (viewer && action === "zoom-out") {
+        zoomMindmapViewer(viewer, 0.87);
+      } else if (action === "fullscreen") {
+        openMindmapModal(mindmapTool.getAttribute("data-source") || "");
+      }
+      return;
+    }
+
     if (target.classList.contains("semrush-coach-enable-current-site")) {
       addCurrentSite();
       return;
@@ -1324,6 +2417,28 @@
     const index = Number(target.dataset.hintIndex);
     if (latest?.elementHints?.[index]) {
       highlightHint(latest.elementHints[index]);
+    }
+  });
+
+  mindmapModalEl?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const mindmapTool = target.closest(".semrush-coach-mindmap-tool");
+    if (!mindmapTool) {
+      return;
+    }
+
+    const viewer = mindmapTool.closest(".semrush-coach-mindmap-viewer");
+    const action = mindmapTool.getAttribute("data-action");
+    if (viewer && action === "fit") {
+      fitMindmapViewer(viewer);
+    } else if (viewer && action === "zoom-in") {
+      zoomMindmapViewer(viewer, 1.15);
+    } else if (viewer && action === "zoom-out") {
+      zoomMindmapViewer(viewer, 0.87);
     }
   });
 

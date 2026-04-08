@@ -3,6 +3,8 @@ import { QUICK_PROMPTS } from "./knowledge.js";
 const DEFAULT_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const DEFAULT_MODEL = "qwen-vl-max-latest";
 const DEFAULT_TIMEOUT_MS = 180000;
+const DEFAULT_TRIAL_LIMIT = 15;
+const DEFAULT_TRIAL_API_URL = "";
 
 function isTimeoutError(error) {
   const message = String(error?.message || error || "").toLowerCase();
@@ -54,6 +56,164 @@ function extractJsonBlock(text) {
 
 function safeParseModelJson(text) {
   return JSON.parse(extractJsonBlock(text));
+}
+
+function hasDirectRemoteSettings(settings) {
+  return Boolean(settings?.remoteEnabled && settings?.apiUrl && settings?.apiKey);
+}
+
+function hasTrialRemoteSettings(settings) {
+  return Boolean(settings?.remoteEnabled && settings?.trialEnabled && settings?.trialApiUrl);
+}
+
+function normalizeTrialApiUrl(url) {
+  return String(url || "").trim().replace(/\/+$/, "");
+}
+
+function buildTrialEndpoint(baseUrl, path) {
+  return `${normalizeTrialApiUrl(baseUrl)}${path}`;
+}
+
+function buildResponseErrorMessage(status, data, fallbackText) {
+  const message =
+    data?.error?.message ||
+    data?.message ||
+    data?.error ||
+    fallbackText ||
+    `API ${status}`;
+  return `API ${status}: ${String(message).slice(0, 240)}`;
+}
+
+function createTrialQuotaError(data) {
+  const error = new Error(
+    data?.error?.message ||
+      data?.message ||
+      "免费体验次数已用完，请填写你自己的 API Key 后继续使用。"
+  );
+  error.code = "TRIAL_QUOTA_EXCEEDED";
+  error.remainingFreeUses = Number(data?.remainingFreeUses ?? data?.error?.remainingFreeUses ?? 0) || 0;
+  error.freeTrialLimit = Number(data?.freeTrialLimit ?? data?.error?.freeTrialLimit ?? DEFAULT_TRIAL_LIMIT) || DEFAULT_TRIAL_LIMIT;
+  return error;
+}
+
+async function parseJsonSafely(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+async function requestDirectCompletion({ settings, requestBody, timeoutMs }) {
+  const response = await postJsonWithTimeout(
+    settings.apiUrl || DEFAULT_API_URL,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${settings.apiKey}`
+      },
+      body: JSON.stringify(requestBody)
+    },
+    timeoutMs
+  );
+
+  if (!response.ok) {
+    const data = await parseJsonSafely(response);
+    throw new Error(buildResponseErrorMessage(response.status, data, await response.text().catch(() => "")));
+  }
+
+  return response.json();
+}
+
+async function requestTrialCompletion({ settings, feature, requestBody, timeoutMs }) {
+  const response = await postJsonWithTimeout(
+    buildTrialEndpoint(settings.trialApiUrl, "/chat"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        installId: settings.installId || "",
+        feature,
+        request: requestBody
+      })
+    },
+    timeoutMs
+  );
+
+  const data = await parseJsonSafely(response);
+  if (!response.ok) {
+    if (response.status === 402 || data?.error?.code === "TRIAL_QUOTA_EXCEEDED") {
+      throw createTrialQuotaError(data);
+    }
+    throw new Error(buildResponseErrorMessage(response.status, data));
+  }
+
+  return data;
+}
+
+async function requestModelCompletion({ settings, feature, requestBody, timeoutMs }) {
+  const trialAvailable = hasTrialRemoteSettings(settings);
+  const directAvailable = hasDirectRemoteSettings(settings);
+
+  if (trialAvailable) {
+    try {
+      return await requestTrialCompletion({ settings, feature, requestBody, timeoutMs });
+    } catch (error) {
+      if (error?.code === "TRIAL_QUOTA_EXCEEDED" && directAvailable) {
+        return requestDirectCompletion({ settings, requestBody, timeoutMs });
+      }
+
+      if (!directAvailable) {
+        throw error;
+      }
+    }
+  }
+
+  if (directAvailable) {
+    return requestDirectCompletion({ settings, requestBody, timeoutMs });
+  }
+
+  throw new Error("请先配置体验服务地址，或填写你自己的 API Key。");
+}
+
+export async function getTrialStatus(settings) {
+  if (!hasTrialRemoteSettings(settings)) {
+    return {
+      enabled: false,
+      remainingFreeUses: 0,
+      freeTrialLimit: settings?.freeTrialLimit || DEFAULT_TRIAL_LIMIT
+    };
+  }
+
+  const query = new URLSearchParams({
+    installId: settings.installId || ""
+  });
+
+  const response = await postJsonWithTimeout(
+    `${buildTrialEndpoint(settings.trialApiUrl, "/status")}?${query.toString()}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json"
+      }
+    },
+    15000
+  );
+
+  const data = await parseJsonSafely(response);
+  if (!response.ok) {
+    throw new Error(buildResponseErrorMessage(response.status, data));
+  }
+
+  return {
+    enabled: true,
+    remainingFreeUses: Number(data?.remainingFreeUses ?? 0) || 0,
+    freeTrialLimit: Number(data?.freeTrialLimit ?? settings?.freeTrialLimit ?? DEFAULT_TRIAL_LIMIT) || DEFAULT_TRIAL_LIMIT,
+    usedFreeUses: Number(data?.usedFreeUses ?? 0) || 0
+  };
 }
 
 function normalizeHints(rawHints, snapshot) {
@@ -133,6 +293,10 @@ function buildMessages(payload, localDraft) {
 export function getDefaultRemoteSettings() {
   return {
     remoteEnabled: true,
+    trialEnabled: true,
+    trialApiUrl: DEFAULT_TRIAL_API_URL,
+    freeTrialLimit: DEFAULT_TRIAL_LIMIT,
+    installId: "",
     apiUrl: DEFAULT_API_URL,
     model: DEFAULT_MODEL,
     apiKey: "",
@@ -147,42 +311,35 @@ export async function generateRemoteGuidance({ payload, settings, localDraft }) 
     payload.screenshot?.dataUrl ? 240000 : DEFAULT_TIMEOUT_MS
   );
 
-  const requestOptions = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.apiKey}`
-    },
-    body: JSON.stringify({
-      model: settings.model || DEFAULT_MODEL,
-      temperature: 0.2,
-      messages: buildMessages(payload, localDraft)
-    })
+  const requestBody = {
+    model: settings.model || DEFAULT_MODEL,
+    temperature: 0.2,
+    messages: buildMessages(payload, localDraft)
   };
 
   try {
-    let response;
+    let data;
 
     try {
-      response = await postJsonWithTimeout(settings.apiUrl || DEFAULT_API_URL, requestOptions, timeoutMs);
+      data = await requestModelCompletion({
+        settings,
+        feature: "guidance",
+        requestBody,
+        timeoutMs
+      });
     } catch (error) {
       if (!isTimeoutError(error)) {
         throw error;
       }
 
-      response = await postJsonWithTimeout(
-        settings.apiUrl || DEFAULT_API_URL,
-        requestOptions,
-        timeoutMs + 120000
-      );
+      data = await requestModelCompletion({
+        settings,
+        feature: "guidance",
+        requestBody,
+        timeoutMs: timeoutMs + 120000
+      });
     }
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`API ${response.status}: ${text.slice(0, 240)}`);
-    }
-
-    const data = await response.json();
     const content = data?.choices?.[0]?.message?.content;
     const parsed = safeParseModelJson(content);
     return normalizeRemoteResponse(parsed, payload.pageSnapshot);
@@ -192,6 +349,21 @@ export async function generateRemoteGuidance({ payload, settings, localDraft }) 
 }
 
 export async function testRemoteConnection(settings) {
+  if (hasTrialRemoteSettings(settings)) {
+    const trialStatus = await getTrialStatus(settings);
+    return {
+      ok: true,
+      mode: "trial",
+      model: settings.model || DEFAULT_MODEL,
+      remainingFreeUses: trialStatus.remainingFreeUses,
+      freeTrialLimit: trialStatus.freeTrialLimit
+    };
+  }
+
+  if (!hasDirectRemoteSettings(settings)) {
+    throw new Error("请先填写你自己的 API Key，或配置体验服务地址。");
+  }
+
   try {
     const response = await postJsonWithTimeout(settings.apiUrl || DEFAULT_API_URL, {
       method: "POST",
@@ -344,25 +516,16 @@ export async function generateUISpecAnalysis({ payload, settings }) {
     { role: "user", content: userContent }
   ];
 
-  const response = await postJsonWithTimeout(settings.apiUrl || DEFAULT_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.apiKey}`
-    },
-    body: JSON.stringify({
+  const data = await requestModelCompletion({
+    settings,
+    feature: "ui_spec",
+    requestBody: {
       model: settings.model || DEFAULT_MODEL,
       temperature: 0.1,
       messages
-    })
-  }, timeoutMs);
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`API ${response.status}: ${text.slice(0, 240)}`);
-  }
-
-  const data = await response.json();
+    },
+    timeoutMs
+  });
   const content = data?.choices?.[0]?.message?.content;
   return safeParseModelJson(content);
 }
@@ -409,25 +572,78 @@ export async function generatePRDAnalysis({ payload, settings }) {
     { role: "user", content: userContent }
   ];
 
-  const response = await postJsonWithTimeout(settings.apiUrl || DEFAULT_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.apiKey}`
-    },
-    body: JSON.stringify({
+  const data = await requestModelCompletion({
+    settings,
+    feature: "prd",
+    requestBody: {
       model: settings.model || DEFAULT_MODEL,
       temperature: 0.3,
       messages
-    })
-  }, timeoutMs);
+    },
+    timeoutMs
+  });
+  const content = data?.choices?.[0]?.message?.content;
+  return safeParseModelJson(content);
+}
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`API ${response.status}: ${text.slice(0, 240)}`);
+const PAGE_SUMMARY_SYSTEM_PROMPT = [
+  "你是一个顶级信息萃取与知识架构助手。",
+  "用户会给你当前网页的结构化快照以及页面截图。",
+  "你的任务是榨干当前网页里的核心观点、方法论、步骤、实操技巧，并产出一份适合直接阅读和复制的 Markdown 总结，以及一份 Mermaid mindmap 脑图代码。",
+  "",
+  "输出要求：",
+  "1. 全部使用中文。",
+  "2. summaryMarkdown 必须是清晰的 Markdown，至少包含：页面主题、核心观点、方法论/框架、实操技巧、易忽略细节、行动建议。",
+  "3. summaryMarkdown 中必须包含项目符号列表，并至少包含 1 个 Markdown 表格。",
+  "4. 如果页面信息不足，不要编造；要明确写出哪些内容是页面明确提到的，哪些只是谨慎推断。",
+  "5. mindmapMermaid 必须是 Mermaid mindmap 语法，可直接复制渲染。",
+  "6. 脑图根节点应是页面主题，向下展开 3-5 个一级分支，每个一级分支下再展开关键要点或技巧。",
+  "7. 脑图尽量克制：总节点不超过 18 个，层级不超过 3 层，每个一级分支最多 4 个子点。",
+  "8. 只返回 JSON，不要加代码块。",
+  'Schema: {"pageSummary":"string","summaryMarkdown":"string","mindmapMermaid":"string"}'
+].join("\n");
+
+export async function generatePageSummaryAnalysis({ payload, settings }) {
+  const timeoutMs = Math.max(settings.timeoutMs || DEFAULT_TIMEOUT_MS, 240000);
+
+  const userContent = [
+    {
+      type: "text",
+      text: JSON.stringify({
+        task: "PAGE_SUMMARY_AND_MINDMAP",
+        url: payload.pageSnapshot?.url || "",
+        title: payload.pageSnapshot?.title || "",
+        pageSnapshot: payload.pageSnapshot,
+        summarySource: payload.summarySource || null
+      }, null, 2)
+    }
+  ];
+
+  if (payload.screenshot?.dataUrl) {
+    userContent.push({
+      type: "image_url",
+      image_url: {
+        url: payload.screenshot.dataUrl,
+        detail: "high"
+      }
+    });
   }
 
-  const data = await response.json();
+  const messages = [
+    { role: "system", content: PAGE_SUMMARY_SYSTEM_PROMPT },
+    { role: "user", content: userContent }
+  ];
+
+  const data = await requestModelCompletion({
+    settings,
+    feature: "page_summary",
+    requestBody: {
+      model: settings.model || DEFAULT_MODEL,
+      temperature: 0.2,
+      messages
+    },
+    timeoutMs
+  });
   const content = data?.choices?.[0]?.message?.content;
   return safeParseModelJson(content);
 }

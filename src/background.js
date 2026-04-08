@@ -1,5 +1,5 @@
 import { generateGuidance } from "./core/guidance-engine.js";
-import { getDefaultRemoteSettings, generateRemoteGuidance, testRemoteConnection, generateUISpecAnalysis, generatePRDAnalysis } from "./core/remote-client.js";
+import { getDefaultRemoteSettings, generateRemoteGuidance, testRemoteConnection, generateUISpecAnalysis, generatePRDAnalysis, generatePageSummaryAnalysis, getTrialStatus } from "./core/remote-client.js";
 import { buildRedactionSummary, redactArray, redactText } from "./core/redaction.js";
 
 const DEFAULT_ALLOWED_HOSTS = [
@@ -18,6 +18,38 @@ const DEFAULT_SETTINGS = {
   ...getDefaultRemoteSettings()
 };
 
+function createInstallId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `install_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function hasConfiguredRemoteAccess(settings) {
+  return Boolean(
+    settings?.remoteEnabled &&
+      ((settings?.trialEnabled && settings?.trialApiUrl) || (settings?.apiUrl && settings?.apiKey))
+  );
+}
+
+async function enrichSettings(settings) {
+  const enriched = { ...settings };
+
+  if (settings?.trialEnabled && settings?.trialApiUrl) {
+    try {
+      enriched.trialStatus = await getTrialStatus(settings);
+    } catch (error) {
+      enriched.trialStatus = {
+        enabled: true,
+        error: error instanceof Error ? error.message : "体验服务暂时不可用"
+      };
+    }
+  }
+
+  return enriched;
+}
+
 function sanitizeSnapshot(snapshot) {
   const sanitized = {
     ...snapshot,
@@ -35,6 +67,29 @@ function sanitizeSnapshot(snapshot) {
   };
 }
 
+function sanitizeSummarySource(summarySource) {
+  if (!summarySource) {
+    return null;
+  }
+
+  return {
+    ...summarySource,
+    headings: (summarySource.headings || []).map((item) => redactText(item)).filter(Boolean),
+    keyPoints: (summarySource.keyPoints || []).map((item) => redactText(item)).filter(Boolean),
+    paragraphs: (summarySource.paragraphs || []).map((item) => redactText(item)).filter(Boolean),
+    listItems: (summarySource.listItems || []).map((item) => redactText(item)).filter(Boolean),
+    tables: (summarySource.tables || []).map((table) => ({
+      caption: redactText(table.caption),
+      headers: (table.headers || []).map((cell) => redactText(cell)).filter(Boolean),
+      rows: (table.rows || []).map((row) => row.map((cell) => redactText(cell)).filter(Boolean)).filter((row) => row.length)
+    })),
+    samples: (summarySource.samples || []).map((item) => ({
+      y: Number(item.y) || 0,
+      texts: (item.texts || []).map((text) => redactText(text)).filter(Boolean)
+    }))
+  };
+}
+
 function buildScreenshotFallback(localDraft) {
   return {
     ...localDraft,
@@ -46,10 +101,11 @@ function buildScreenshotFallback(localDraft) {
 }
 
 async function getSettings() {
-  const data = await chrome.storage.local.get("semrushCoachSettings");
+  const data = await chrome.storage.local.get(["semrushCoachSettings", "semrushCoachInstallId"]);
   return {
     ...DEFAULT_SETTINGS,
-    ...(data.semrushCoachSettings || {})
+    ...(data.semrushCoachSettings || {}),
+    installId: data.semrushCoachInstallId || ""
   };
 }
 
@@ -72,8 +128,9 @@ const LEGACY_API_URLS = [
 ];
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const existing = await chrome.storage.local.get("semrushCoachSettings");
+  const existing = await chrome.storage.local.get(["semrushCoachSettings", "semrushCoachInstallId"]);
   const prev = existing.semrushCoachSettings || {};
+  const installId = existing.semrushCoachInstallId || createInstallId();
 
   // 如果旧配置用的是已知不可用的默认 URL 且没有填过 Key，迁移到新默认
   if (!prev.apiUrl || LEGACY_API_URLS.includes(prev.apiUrl)) {
@@ -82,6 +139,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 
   await chrome.storage.local.set({
+    semrushCoachInstallId: installId,
     semrushCoachSettings: {
       ...DEFAULT_SETTINGS,
       ...prev
@@ -92,6 +150,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "SEMRUSH_COACH_LOAD_SETTINGS") {
     getSettings()
+      .then((settings) => enrichSettings(settings))
       .then((settings) => sendResponse({ ok: true, data: settings }))
       .catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;
@@ -99,6 +158,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === "SEMRUSH_COACH_SAVE_SETTINGS") {
     saveSettings(message.payload || {})
+      .then((settings) => enrichSettings(settings))
       .then((settings) => sendResponse({ ok: true, data: settings }))
       .catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;
@@ -123,8 +183,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try {
         const settings = await getSettings();
-        if (!settings.remoteEnabled || !settings.apiKey || !settings.apiUrl) {
-          sendResponse({ ok: false, error: "请先配置远程模型 API" });
+        if (!hasConfiguredRemoteAccess(settings)) {
+          sendResponse({ ok: false, error: "请先配置体验服务地址，或填写你自己的 API Key。" });
           return;
         }
         const payload = {
@@ -147,8 +207,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try {
         const settings = await getSettings();
-        if (!settings.remoteEnabled || !settings.apiKey || !settings.apiUrl) {
-          sendResponse({ ok: false, error: "请先配置远程模型 API" });
+        if (!hasConfiguredRemoteAccess(settings)) {
+          sendResponse({ ok: false, error: "请先配置体验服务地址，或填写你自己的 API Key。" });
           return;
         }
         const payload = {
@@ -161,6 +221,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true, data: prdData });
       } catch (error) {
         console.error("[AI Coach] PRD 文档生成失败:", error);
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.type === "SEMRUSH_COACH_PAGE_SUMMARY") {
+    (async () => {
+      try {
+        const settings = await getSettings();
+        if (!hasConfiguredRemoteAccess(settings)) {
+          sendResponse({ ok: false, error: "请先配置体验服务地址，或填写你自己的 API Key。" });
+          return;
+        }
+        const payload = {
+          ...message.payload,
+          pageSnapshot: sanitizeSnapshot(message.payload.pageSnapshot),
+          summarySource: sanitizeSummarySource(message.payload.summarySource)
+        };
+        console.log("[AI Coach] 开始生成页面总结与脑图...");
+        const summaryData = await generatePageSummaryAnalysis({ payload, settings });
+        console.log("[AI Coach] 页面总结与脑图生成完成");
+        sendResponse({ ok: true, data: summaryData });
+      } catch (error) {
+        console.error("[AI Coach] 页面总结与脑图生成失败:", error);
         sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
       }
     })();
@@ -185,10 +270,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         localDraft = buildScreenshotFallback(localDraft);
       }
 
-      if (settings.remoteEnabled && settings.apiKey && settings.apiUrl) {
+      if (hasConfiguredRemoteAccess(settings)) {
         try {
           const imgSize = payload.screenshot?.dataUrl?.length || 0;
-          console.log(`[AI Coach] 正在调用远程 API: ${settings.apiUrl}, 模型: ${settings.model}, 图片大小: ${Math.round(imgSize / 1024)}KB`);
+          console.log(`[AI Coach] 正在调用远程模型，模型: ${settings.model}, 图片大小: ${Math.round(imgSize / 1024)}KB`);
           const remoteData = await generateRemoteGuidance({
             payload,
             settings,
