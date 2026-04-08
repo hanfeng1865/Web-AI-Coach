@@ -211,6 +211,10 @@
   grid-column: 1 / -1;
 }
 
+.semrush-coach-admin-only {
+  display: none !important;
+}
+
 .semrush-coach-settings-grid input[type="text"],
 .semrush-coach-settings-grid input[type="password"],
 .semrush-coach-settings-grid textarea,

@@ -62,11 +62,11 @@
       <div class="semrush-coach-page-chip">正在读取当前页面…</div>
       <section class="semrush-coach-settings semrush-coach-hidden">
         <div class="semrush-coach-settings-grid">
-          <label class="semrush-coach-setting-full">
+          <label class="semrush-coach-setting-full semrush-coach-admin-only">
             <span>体验服务地址</span>
             <input class="semrush-coach-setting-trial-api-url" type="text" placeholder="https://your-domain.com/api/trial" />
           </label>
-          <label class="semrush-coach-setting-full">
+          <label class="semrush-coach-setting-full semrush-coach-admin-only">
             <span>服务商</span>
             <select class="semrush-coach-setting-provider">
               <option value="qianwen" selected>通义千问 (Qianwen)</option>
@@ -74,11 +74,11 @@
               <option value="custom">自定义 (Custom)</option>
             </select>
           </label>
-          <label class="semrush-coach-setting-full">
+          <label class="semrush-coach-setting-full semrush-coach-admin-only">
             <span>API URL</span>
             <input class="semrush-coach-setting-api-url" type="text" placeholder="https://..." />
           </label>
-          <label class="semrush-coach-setting-full">
+          <label class="semrush-coach-setting-full semrush-coach-admin-only">
             <span>模型 (需支持视觉)</span>
             <select class="semrush-coach-setting-model-select"></select>
             <input class="semrush-coach-setting-model-input semrush-coach-hidden" type="text" placeholder="输入自定义模型名称，如 ep-202xxx" />
