@@ -46,7 +46,8 @@
     focusMode: {
       active: false,
       host: null,
-      theme: "dark"
+      theme: "dark",
+      scrollLock: null
     }
   };
 
@@ -287,8 +288,16 @@
 
   function scrollHistoryToBottom() {
     window.requestAnimationFrame(() => {
+      if (!historyEl) return;
+      
+      // 优先直接设置 scrollTop 确保到达物理底部
       historyEl.scrollTop = historyEl.scrollHeight;
-      panel.scrollTop = panel.scrollHeight;
+      
+      // 针对进度条卡片进行视口校准
+      const lastItem = historyEl.lastElementChild;
+      if (lastItem instanceof HTMLElement) {
+        lastItem.scrollIntoView({ block: "end", inline: "nearest", behavior: "smooth" });
+      }
     });
   }
 
@@ -417,6 +426,153 @@
       .join("\n");
   }
 
+  function renderInlineMarkdown(text) {
+    const placeholders = [];
+    const stash = (value) => {
+      const token = `__SEMCOACH_INLINE_${placeholders.length}__`;
+      placeholders.push(value);
+      return token;
+    };
+
+    let html = escapeHtml(String(text || ""));
+    html = html.replace(/`([^`]+)`/g, (_, code) => stash(`<code>${escapeHtml(code)}</code>`));
+    html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    html = html.replace(/__(.+?)__/g, "<strong>$1</strong>");
+    html = html.replace(/_([^_]+)_/g, "<em>$1</em>");
+    html = html.replace(/\n/g, "<br />");
+
+    placeholders.forEach((value, index) => {
+      html = html.replace(`__SEMCOACH_INLINE_${index}__`, value);
+    });
+    return html;
+  }
+
+  function renderMarkdownTable(lines) {
+    const rows = lines
+      .map((line) => String(line || "").trim())
+      .filter(Boolean)
+      .map((line) => line.replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim()));
+
+    if (rows.length < 2) {
+      return "";
+    }
+
+    const header = rows[0];
+    const bodyRows = rows.slice(1).filter((row) => !row.every((cell) => /^:?-{3,}:?$/.test(cell)));
+    return `
+      <div class="semrush-coach-rich-table-wrap">
+        <table class="semrush-coach-rich-table">
+          <thead>
+            <tr>${header.map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            ${bodyRows
+              .map((row) => `<tr>${row.map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`).join("")}</tr>`)
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderMarkdownContent(source) {
+    const lines = String(source || "").replace(/\r\n?/g, "\n").split("\n");
+    const html = [];
+    let index = 0;
+
+    while (index < lines.length) {
+      const rawLine = lines[index];
+      const line = rawLine.trim();
+
+      if (!line) {
+        index += 1;
+        continue;
+      }
+
+      if (/^```/.test(line)) {
+        const codeLines = [];
+        index += 1;
+        while (index < lines.length && !/^```/.test(lines[index].trim())) {
+          codeLines.push(lines[index]);
+          index += 1;
+        }
+        if (index < lines.length) {
+          index += 1;
+        }
+        html.push(`<pre class="semrush-coach-code-block"><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+        continue;
+      }
+
+      if (line.includes("|")) {
+        const tableLines = [];
+        let probe = index;
+        while (probe < lines.length && lines[probe].trim().includes("|")) {
+          tableLines.push(lines[probe]);
+          probe += 1;
+        }
+        if (
+          tableLines.length >= 2 &&
+          /^\|?[\s:-|]+\|?\s*$/.test(tableLines[1].trim())
+        ) {
+          html.push(renderMarkdownTable(tableLines));
+          index = probe;
+          continue;
+        }
+      }
+
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+      if (headingMatch) {
+        const level = Math.min(4, headingMatch[1].length);
+        html.push(`<h${level + 1} class="semrush-coach-rich-heading semrush-coach-rich-heading-${level}">${renderInlineMarkdown(headingMatch[2])}</h${level + 1}>`);
+        index += 1;
+        continue;
+      }
+
+      if (/^>\s?/.test(line)) {
+        const quoteLines = [];
+        while (index < lines.length && /^>\s?/.test(lines[index].trim())) {
+          quoteLines.push(lines[index].trim().replace(/^>\s?/, ""));
+          index += 1;
+        }
+        html.push(`<blockquote class="semrush-coach-rich-quote">${quoteLines.map((part) => `<p>${renderInlineMarkdown(part)}</p>`).join("")}</blockquote>`);
+        continue;
+      }
+
+      if (/^([-*+]\s+|\d+[.)]\s+)/.test(line)) {
+        const ordered = /^\d+[.)]\s+/.test(line);
+        const items = [];
+        while (index < lines.length && /^([-*+]\s+|\d+[.)]\s+)/.test(lines[index].trim())) {
+          items.push(lines[index].trim().replace(/^([-*+]\s+|\d+[.)]\s+)/, ""));
+          index += 1;
+        }
+        html.push(
+          `<${ordered ? "ol" : "ul"} class="semrush-coach-rich-list">${
+            items.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")
+          }</${ordered ? "ol" : "ul"}>`
+        );
+        continue;
+      }
+
+      const paragraphLines = [];
+      while (
+        index < lines.length &&
+        lines[index].trim() &&
+        !/^```/.test(lines[index].trim()) &&
+        !/^(#{1,6})\s+/.test(lines[index].trim()) &&
+        !/^>\s?/.test(lines[index].trim()) &&
+        !/^([-*+]\s+|\d+[.)]\s+)/.test(lines[index].trim())
+      ) {
+        paragraphLines.push(lines[index].trim());
+        index += 1;
+      }
+      html.push(`<p>${renderInlineMarkdown(paragraphLines.join(" "))}</p>`);
+    }
+
+    return `<div class="semrush-coach-rich-content">${html.join("")}</div>`;
+  }
+
   function parseMindmapLabel(line) {
     const trimmed = String(line || "").trim();
     if (!trimmed) {
@@ -492,10 +648,10 @@
     const nodes = [];
     const links = [];
     const branchColors = ["#2f6fed", "#e05a47", "#8358ff", "#119d67", "#d57d12", "#cc4fa8"];
-    const siblingGap = 34;
-    const horizontalGap = 224;
-    const rootGap = 146;
-    const padding = 54;
+    const siblingGap = 42;
+    const horizontalGap = 248;
+    const rootGap = 156;
+    const padding = 68;
 
     const countUnits = (text) =>
       Array.from(String(text || "")).reduce((sum, char) => {
@@ -541,8 +697,8 @@
       node.depth = depth;
       node.lines = splitLabel(node.label, depth === 0 ? 22 : 17);
       const maxUnits = Math.max(...node.lines.map((line) => countUnits(line)), 5);
-      node.width = Math.max(depth === 0 ? 280 : 136, Math.min(depth === 0 ? 420 : 250, 40 + maxUnits * (depth === 0 ? 14.5 : 13)));
-      node.height = Math.max(depth === 0 ? 74 : 50, 20 + node.lines.length * (depth === 0 ? 22 : 18));
+      node.width = Math.max(depth === 0 ? 292 : 154, Math.min(depth === 0 ? 432 : 270, 48 + maxUnits * (depth === 0 ? 14.8 : 13.4)));
+      node.height = Math.max(depth === 0 ? 82 : 56, 24 + node.lines.length * (depth === 0 ? 23 : 19));
 
       node.children.forEach((child) => prepareNode(child, depth + 1));
 
@@ -647,8 +803,8 @@
     return {
       nodes,
       links,
-      width: Math.max(880, maxX - minX),
-      height: Math.max(460, maxY - minY),
+      width: Math.max(960, maxX - minX),
+      height: Math.max(520, maxY - minY),
       branchColors
     };
   }
@@ -664,8 +820,12 @@
       <svg class="semrush-coach-mindmap-svg${modal ? " semrush-coach-mindmap-svg-modal" : ""}" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="脑图预览">
         <defs>
           <filter id="semrushMindmapShadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="rgba(18,31,28,0.12)"/>
+            <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#d9e0dd" flood-opacity="0.22"/>
           </filter>
+          <linearGradient id="semrushMindmapRootFill" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#0d6a5a"/>
+            <stop offset="100%" stop-color="#15584d"/>
+          </linearGradient>
         </defs>
         ${layout.links
           .map((link) => {
@@ -679,30 +839,30 @@
             const cp1x = isRight ? startX + curve : startX - curve;
             const cp2x = isRight ? endX - curve : endX + curve;
             return `
-              <path d="M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}" fill="none" stroke="${stroke}" stroke-opacity="0.18" stroke-width="${link.from.depth === 0 ? 8 : 5}" stroke-linecap="round"/>
-              <path d="M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}" fill="none" stroke="${stroke}" stroke-width="${link.from.depth === 0 ? 4 : 2.6}" stroke-linecap="round"/>
+              <path d="M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}" fill="none" stroke="${stroke}" stroke-opacity="0.14" stroke-width="${link.from.depth === 0 ? 9 : 5.5}" stroke-linecap="round"/>
+              <path d="M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}" fill="none" stroke="${stroke}" stroke-width="${link.from.depth === 0 ? 4.2 : 2.8}" stroke-linecap="round"/>
             `;
           })
           .join("")}
         ${layout.nodes
           .map((node) => {
             const branchColor = layout.branchColors[node.branchIndex % layout.branchColors.length];
-            const fill = node.depth === 0 ? "#0c5e50" : "#ffffff";
-            const stroke = node.depth === 0 ? "#0c5e50" : "rgba(64, 78, 72, 0.10)";
+            const fill = node.depth === 0 ? "url(#semrushMindmapRootFill)" : "#ffffff";
+            const stroke = node.depth === 0 ? "rgba(12,94,80,0.35)" : "rgba(64, 78, 72, 0.09)";
             const textColor = node.depth === 0 ? "#f5fbf8" : "#20312c";
-            const fontSize = node.depth === 0 ? 19 : 14;
-            const lineHeight = node.depth === 0 ? 22 : 19;
+            const fontSize = node.depth === 0 ? 20 : 14;
+            const lineHeight = node.depth === 0 ? 24 : 19;
             const textStartY =
               node.y + node.height / 2 - ((node.lines.length - 1) * lineHeight) / 2 + 5;
             return `
               <g filter="url(#semrushMindmapShadow)">
-                <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${node.depth === 0 ? 22 : 18}" fill="${fill}" stroke="${stroke}" stroke-width="${node.depth === 0 ? 0 : 1.1}"></rect>
-                ${node.depth === 0 ? "" : `<rect x="${node.x + 10}" y="${node.y + 10}" width="4" height="${Math.max(18, node.height - 20)}" rx="999" fill="${branchColor}" opacity="0.92"></rect>`}
+                <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${node.depth === 0 ? 24 : 18}" fill="${fill}" stroke="${stroke}" stroke-width="${node.depth === 0 ? 1 : 1.1}"></rect>
+                ${node.depth === 0 ? "" : `<rect x="${node.x + 12}" y="${node.y + 11}" width="4" height="${Math.max(20, node.height - 22)}" rx="999" fill="${branchColor}" opacity="0.92"></rect>`}
                 <text fill="${textColor}" font-size="${fontSize}" font-weight="${node.depth === 0 ? 700 : 500}" font-family="Manrope, PingFang SC, Microsoft YaHei, sans-serif">
                   ${node.lines
                     .map(
                       (line, index) =>
-                        `<tspan x="${node.x + (node.depth === 0 ? 18 : 24)}" y="${textStartY + index * lineHeight}">${escapeHtml(line)}</tspan>`
+                        `<tspan x="${node.x + (node.depth === 0 ? 22 : 28)}" y="${textStartY + index * lineHeight}">${escapeHtml(line)}</tspan>`
                     )
                     .join("")}
                 </text>
@@ -1177,18 +1337,13 @@
           `
           : item.renderAsCode
               ? `<pre class="semrush-coach-code-block"><code>${escapeHtml(String(item.answer || ""))}</code></pre>`
-              : String(item.answer || "")
-                  .split(/\n+/)
-                  .map((line) => line.trim())
-                  .filter(Boolean)
-                  .map((line) => `<p>${escapeHtml(line)}</p>`)
-                  .join("");
+              : renderMarkdownContent(item.answer || "");
 
         const steps = item.renderAsMindmap ? "" : (item.suggestedNextSteps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("");
         const encodedAnswer = escapeAttribute(item.answer || "");
         const actionButton = item.renderAsMindmap
-          ? `<button class="semrush-coach-mindmap-open-btn" data-answer="${encodedAnswer}" type="button">全屏查看</button>`
-          : `<button class="semrush-coach-copy-btn" data-answer="${encodedAnswer}" title="一键复制">📋 复制</button>`;
+          ? ""
+          : `<button class="semrush-coach-copy-btn" data-answer="${encodedAnswer}" title="一键复制">复制</button>`;
 
         return `
           <article class="semrush-coach-card">
@@ -1510,18 +1665,10 @@
     const progressCard = document.createElement("article");
     progressCard.className = "semrush-coach-card semrush-coach-progress-card";
     progressCard.innerHTML = `
-      <div class="semrush-coach-progress-head">
-        <span class="semrush-coach-progress-eyebrow">${escapeHtml(eyebrow)}</span>
-        <span class="semrush-coach-progress-percent">${Math.round(initialPercent)}%</span>
-      </div>
       <p class="semrush-coach-card-title semrush-coach-progress-title">${escapeHtml(title)}</p>
       <p class="semrush-coach-progress-step">${escapeHtml(steps[0] || "处理中…")}</p>
       <div class="semrush-coach-progress-bar-wrap">
-        <div class="semrush-coach-progress-bar-glow"></div>
         <div class="semrush-coach-progress-bar" style="width: ${initialPercent}%"></div>
-      </div>
-      <div class="semrush-coach-progress-dots" aria-hidden="true">
-        ${steps.map((_, index) => `<span class="${index === 0 ? "is-active" : ""}"></span>`).join("")}
       </div>
     `;
     historyEl.appendChild(progressCard);
@@ -1529,8 +1676,6 @@
 
     const progressBar = progressCard.querySelector(".semrush-coach-progress-bar");
     const progressStepEl = progressCard.querySelector(".semrush-coach-progress-step");
-    const progressPercentEl = progressCard.querySelector(".semrush-coach-progress-percent");
-    const progressDots = Array.from(progressCard.querySelectorAll(".semrush-coach-progress-dots span"));
 
     return {
       card: progressCard,
@@ -1541,12 +1686,6 @@
         if (progressBar) {
           progressBar.style.width = `${percent}%`;
         }
-        if (progressPercentEl) {
-          progressPercentEl.textContent = `${Math.round(percent)}%`;
-        }
-        progressDots.forEach((dot, index) => {
-          dot.classList.toggle("is-active", index <= step);
-        });
         scrollHistoryToBottom();
       },
       remove() {
@@ -1655,6 +1794,40 @@
     state.selectionActive = false;
   }
 
+  function lockPageScrollForFocusMode() {
+    if (state.focusMode.scrollLock) {
+      return;
+    }
+
+    const docEl = document.documentElement;
+    const bodyEl = document.body;
+    state.focusMode.scrollLock = {
+      docOverflow: docEl.style.overflow,
+      docOverscrollBehavior: docEl.style.overscrollBehavior,
+      bodyOverflow: bodyEl.style.overflow,
+      bodyOverscrollBehavior: bodyEl.style.overscrollBehavior
+    };
+
+    docEl.style.overflow = "hidden";
+    docEl.style.overscrollBehavior = "none";
+    bodyEl.style.overflow = "hidden";
+    bodyEl.style.overscrollBehavior = "none";
+  }
+
+  function unlockPageScrollForFocusMode() {
+    if (!state.focusMode.scrollLock) {
+      return;
+    }
+
+    const docEl = document.documentElement;
+    const bodyEl = document.body;
+    docEl.style.overflow = state.focusMode.scrollLock.docOverflow;
+    docEl.style.overscrollBehavior = state.focusMode.scrollLock.docOverscrollBehavior;
+    bodyEl.style.overflow = state.focusMode.scrollLock.bodyOverflow;
+    bodyEl.style.overscrollBehavior = state.focusMode.scrollLock.bodyOverscrollBehavior;
+    state.focusMode.scrollLock = null;
+  }
+
   function deactivateFocusMode() {
     cleanupFocusSelection();
     if (typeof state.focusMode.host?.__cleanup === "function") {
@@ -1663,6 +1836,7 @@
     if (state.focusMode.host?.isConnected) {
       state.focusMode.host.remove();
     }
+    unlockPageScrollForFocusMode();
     state.focusMode.active = false;
     state.focusMode.host = null;
   }
@@ -1830,6 +2004,7 @@
     }
 
     deactivateFocusMode();
+    lockPageScrollForFocusMode();
 
     const host = document.createElement("div");
     host.className = "semrush-coach-focus-host";
@@ -2035,6 +2210,22 @@
           box-sizing: border-box;
         }
 
+        .focus-title,
+        .focus-body,
+        .focus-body * {
+          cursor: text;
+          user-select: text;
+          -webkit-user-select: text;
+        }
+
+        .focus-toolbar,
+        .focus-toolbar *,
+        .focus-selection-action {
+          cursor: pointer;
+          user-select: none;
+          -webkit-user-select: none;
+        }
+
         .focus-mask-layer {
           position: fixed;
           inset: 0;
@@ -2174,6 +2365,53 @@
     let rainAnimationId = null;
     let rainEnabled = true;
     let lineFocusKeepers = [];
+    let isPointerSelecting = false;
+    let selectionAutoScrollSpeed = 0;
+    let selectionAutoScrollRaf = null;
+
+    const stopSelectionAutoScroll = () => {
+      selectionAutoScrollSpeed = 0;
+      if (selectionAutoScrollRaf) {
+        cancelAnimationFrame(selectionAutoScrollRaf);
+        selectionAutoScrollRaf = null;
+      }
+    };
+
+    const runSelectionAutoScroll = () => {
+      if (!(shellEl instanceof HTMLElement) || !isPointerSelecting || !selectionAutoScrollSpeed) {
+        selectionAutoScrollRaf = null;
+        return;
+      }
+      shellEl.scrollTop += selectionAutoScrollSpeed;
+      selectionAutoScrollRaf = requestAnimationFrame(runSelectionAutoScroll);
+    };
+
+    const updateSelectionAutoScroll = (clientY) => {
+      if (!(shellEl instanceof HTMLElement) || !isPointerSelecting) {
+        stopSelectionAutoScroll();
+        return;
+      }
+
+      const shellRect = shellEl.getBoundingClientRect();
+      const edgeThreshold = Math.min(120, Math.max(72, shellRect.height * 0.14));
+      const maxSpeed = 22;
+      let nextSpeed = 0;
+
+      if (clientY < shellRect.top + edgeThreshold) {
+        const ratio = Math.min(1, (shellRect.top + edgeThreshold - clientY) / edgeThreshold);
+        nextSpeed = -Math.max(6, ratio * maxSpeed);
+      } else if (clientY > shellRect.bottom - edgeThreshold) {
+        const ratio = Math.min(1, (clientY - (shellRect.bottom - edgeThreshold)) / edgeThreshold);
+        nextSpeed = Math.max(6, ratio * maxSpeed);
+      }
+
+      selectionAutoScrollSpeed = nextSpeed;
+      if (selectionAutoScrollSpeed && !selectionAutoScrollRaf) {
+        selectionAutoScrollRaf = requestAnimationFrame(runSelectionAutoScroll);
+      } else if (!selectionAutoScrollSpeed) {
+        stopSelectionAutoScroll();
+      }
+    };
 
     if (canvas instanceof HTMLCanvasElement) {
       const ctx = canvas.getContext("2d");
@@ -2353,22 +2591,63 @@
     });
 
     const handleSelectionChange = () => requestAnimationFrame(updateSelectionAction);
-    shadow.addEventListener("mouseup", handleSelectionChange);
-    document.addEventListener("selectionchange", handleSelectionChange);
-    shadow.addEventListener("mousedown", e => {
+    const handleFocusWheel = (event) => {
+      if (!(shellEl instanceof HTMLElement) || event.ctrlKey) {
+        return;
+      }
+      const deltaUnit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? shellEl.clientHeight : 1;
+      shellEl.scrollTop += event.deltaY * deltaUnit;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handlePointerMove = (event) => {
+      if (!isPointerSelecting) {
+        return;
+      }
+      updateSelectionAutoScroll(event.clientY);
+    };
+    const handlePointerDown = (e) => {
+      isPointerSelecting = true;
       if (e.target instanceof HTMLElement && e.target.closest(".focus-selection-action")) return;
       clearSelectionActionButton();
-    });
+    };
+    const handlePointerUp = () => {
+      isPointerSelecting = false;
+      stopSelectionAutoScroll();
+    };
+    const handlePointerLeave = () => {
+      if (!isPointerSelecting) {
+        stopSelectionAutoScroll();
+      }
+    };
 
+    shadow.addEventListener("mouseup", handleSelectionChange);
+    document.addEventListener("selectionchange", handleSelectionChange);
+    shadow.addEventListener("mousemove", handlePointerMove);
+    shadow.addEventListener("mousedown", handlePointerDown);
+    shadow.addEventListener("mouseup", handlePointerUp);
+    shadow.addEventListener("mouseleave", handlePointerLeave);
+    window.addEventListener("mouseup", handlePointerUp);
+
+    shellEl?.addEventListener("wheel", handleFocusWheel, { passive: false });
     shellEl?.addEventListener("scroll", () => clearSelectionActionButton(), { passive: true });
     shellEl?.addEventListener("scroll", updateLineFocusMask, { passive: true });
     window.addEventListener("resize", updateLineFocusMask);
 
     host.__cleanup = () => {
       if (rainAnimationId) cancelAnimationFrame(rainAnimationId);
+      stopSelectionAutoScroll();
+      isPointerSelecting = false;
       clearSelectionActionButton();
       document.removeEventListener("selectionchange", handleSelectionChange);
       shadow.removeEventListener("mouseup", handleSelectionChange);
+      shadow.removeEventListener("mousemove", handlePointerMove);
+      shadow.removeEventListener("mousedown", handlePointerDown);
+      shadow.removeEventListener("mouseup", handlePointerUp);
+      shadow.removeEventListener("mouseleave", handlePointerLeave);
+      shellEl?.removeEventListener("wheel", handleFocusWheel);
+      window.removeEventListener("mouseup", handlePointerUp);
       window.removeEventListener("resize", updateLineFocusMask);
     };
 
@@ -2714,29 +2993,12 @@
       "🤖 正在调用 AI 视觉模型分析…",
       "📝 正在生成规范文档…"
     ];
-    let currentStep = 0;
-
-    const progressCard = document.createElement("article");
-    progressCard.className = "semrush-coach-card semrush-coach-progress-card";
-    progressCard.innerHTML = `
-      <p class="semrush-coach-card-title">UI 规范提取中</p>
-      <p class="semrush-coach-progress-step">${progressSteps[0]}</p>
-      <div class="semrush-coach-progress-bar-wrap">
-        <div class="semrush-coach-progress-bar" style="width: 5%"></div>
-      </div>
-    `;
-    historyEl.appendChild(progressCard);
-    scrollHistoryToBottom();
-
-    const progressBar = progressCard.querySelector(".semrush-coach-progress-bar");
-    const progressStepEl = progressCard.querySelector(".semrush-coach-progress-step");
-
-    const updateProgress = (step, percent) => {
-      currentStep = step;
-      if (progressStepEl) progressStepEl.textContent = progressSteps[step] || "";
-      if (progressBar) progressBar.style.width = percent + "%";
-      scrollHistoryToBottom();
-    };
+    const progressCard = createProgressCard({
+      title: "UI 规范提取中",
+      steps: progressSteps,
+      initialPercent: 5,
+      eyebrow: "UI Spec"
+    });
 
     // Step 0: 截屏
     let screenshotData = null;
@@ -2748,16 +3010,16 @@
     } catch (e) {
       console.warn("截屏失败:", e);
     }
-    updateProgress(1, 20);
+    progressCard.update(1, 20);
 
     try {
       // Step 1: 采集样式
       const computedStyles = extractComputedStyles();
-      updateProgress(2, 35);
+      progressCard.update(2, 35);
 
       // Step 2: 模拟进度推进（实际等待 API）
       const progressTimer = window.setInterval(() => {
-        const bar = progressCard.querySelector(".semrush-coach-progress-bar");
+        const bar = progressCard.card.querySelector(".semrush-coach-progress-bar");
         if (bar) {
           const cur = parseFloat(bar.style.width) || 35;
           if (cur < 90) bar.style.width = (cur + 1.2) + "%";
@@ -2774,7 +3036,7 @@
       });
 
       window.clearInterval(progressTimer);
-      updateProgress(3, 95);
+      progressCard.update(3, 95);
 
       if (!response?.ok) {
         throw new Error(response?.error || "插件后台请求失败");
@@ -2876,7 +3138,7 @@
       renderHistory();
       openPanel(true);
     } finally {
-      progressCard?.remove();
+      progressCard.remove();
       setLoading(false);
       if (extractBtn) {
         extractBtn.disabled = false;
@@ -2922,29 +3184,12 @@
       "🤖 正在调用 AI 模型深层提取特征…",
       "📝 正在整理 PRD 文档…"
     ];
-    let currentStep = 0;
-
-    const progressCard = document.createElement("article");
-    progressCard.className = "semrush-coach-card semrush-coach-progress-card";
-    progressCard.innerHTML = `
-      <p class="semrush-coach-card-title">产品需求文档生成中</p>
-      <p class="semrush-coach-progress-step" style="font-size:13px; color:#68736d; margin: 4px 0">${progressSteps[0]}</p>
-      <div class="semrush-coach-progress-bar-wrap">
-        <div class="semrush-coach-progress-bar" style="width: 5%"></div>
-      </div>
-    `;
-    historyEl.appendChild(progressCard);
-    scrollHistoryToBottom();
-
-    const progressBar = progressCard.querySelector(".semrush-coach-progress-bar");
-    const progressStepEl = progressCard.querySelector(".semrush-coach-progress-step");
-
-    const updateProgress = (step, percent) => {
-      currentStep = step;
-      if (progressStepEl) progressStepEl.textContent = progressSteps[step] || "";
-      if (progressBar) progressBar.style.width = percent + "%";
-      scrollHistoryToBottom();
-    };
+    const progressCard = createProgressCard({
+      title: "产品需求文档生成中",
+      steps: progressSteps,
+      initialPercent: 5,
+      eyebrow: "PRD"
+    });
 
     let screenshotData = null;
     try {
@@ -2956,11 +3201,12 @@
       console.warn("截屏失败:", e);
     }
     
-    updateProgress(1, 15);
+    progressCard.update(1, 15);
 
     let progressTimer;
     try {
       progressTimer = window.setInterval(() => {
+        const progressBar = progressCard.card.querySelector(".semrush-coach-progress-bar");
         if (progressBar) {
           const cur = parseFloat(progressBar.style.width) || 15;
           if (cur < 93) progressBar.style.width = (cur + 1.4) + "%";
@@ -2976,7 +3222,7 @@
       });
       
       window.clearInterval(progressTimer);
-      updateProgress(2, 98);
+      progressCard.update(2, 98);
 
       if (!response?.ok) {
         throw new Error(response?.error || "插件后台请求失败");
@@ -3006,7 +3252,7 @@
       openPanel(true);
     } finally {
       window.clearInterval(progressTimer);
-      progressCard?.remove();
+      progressCard.remove();
       formEl.style.display = "";
       setLoading(false);
     }
@@ -3055,29 +3301,12 @@
       "正在整理结果…"
     ];
 
-    const progressCard = document.createElement("article");
-    progressCard.className = "semrush-coach-card semrush-coach-progress-card";
-    progressCard.innerHTML = `
-      <p class="semrush-coach-card-title">页面总结与脑图生成中</p>
-      <p class="semrush-coach-progress-step">${progressSteps[0]}</p>
-      <div class="semrush-coach-progress-bar-wrap">
-        <div class="semrush-coach-progress-bar" style="width: 8%"></div>
-      </div>
-    `;
-    historyEl.appendChild(progressCard);
-    scrollHistoryToBottom();
-
-    const progressBar = progressCard.querySelector(".semrush-coach-progress-bar");
-    const progressStepEl = progressCard.querySelector(".semrush-coach-progress-step");
-    const updateProgress = (step, percent) => {
-      if (progressStepEl) {
-        progressStepEl.textContent = progressSteps[step] || "";
-      }
-      if (progressBar) {
-        progressBar.style.width = `${percent}%`;
-      }
-      scrollHistoryToBottom();
-    };
+    const progressCard = createProgressCard({
+      title: "页面总结与脑图生成中",
+      steps: progressSteps,
+      initialPercent: 8,
+      eyebrow: "Summary"
+    });
 
     let screenshotData = null;
     let summarySource = null;
@@ -3085,7 +3314,7 @@
 
     try {
       summarySource = await collectScrollablePageSummarySource();
-      updateProgress(1, 28);
+      progressCard.update(1, 28);
 
       try {
         const captureRes = await chrome.runtime.sendMessage({ type: "SEMRUSH_COACH_CAPTURE_TAB" });
@@ -3096,8 +3325,9 @@
         console.warn("页面总结截图失败:", e);
       }
 
-      updateProgress(2, 44);
+      progressCard.update(2, 44);
       progressTimer = window.setInterval(() => {
+        const progressBar = progressCard.card.querySelector(".semrush-coach-progress-bar");
         const current = parseFloat(progressBar?.style.width || "44") || 44;
         if (current < 92 && progressBar) {
           progressBar.style.width = `${current + 1.1}%`;
@@ -3114,7 +3344,7 @@
       });
 
       window.clearInterval(progressTimer);
-      updateProgress(3, 98);
+      progressCard.update(3, 98);
 
       if (!response?.ok) {
         throw new Error(response?.error || "插件后台请求失败");
@@ -3131,8 +3361,7 @@
           answer: summaryMarkdown,
           suggestedNextSteps: [],
           confidence: 0.94,
-          elementHints: [],
-          renderAsCode: true
+          elementHints: []
         });
       }
 
@@ -3167,7 +3396,7 @@
       openPanel(true);
     } finally {
       window.clearInterval(progressTimer);
-      progressCard?.remove();
+      progressCard.remove();
       setLoading(false);
       if (generateSummaryButtonEl) {
         generateSummaryButtonEl.disabled = false;
@@ -3311,56 +3540,22 @@
       "正在结合页面内容与截图推理…",
       "正在生成建议与下一步动作…"
     ];
-    const questionProgressCard = document.createElement("article");
-    questionProgressCard.className = "semrush-coach-card semrush-coach-progress-card";
-    questionProgressCard.innerHTML = `
-      <div class="semrush-coach-progress-head">
-        <span class="semrush-coach-progress-eyebrow">AI Reasoning</span>
-        <span class="semrush-coach-progress-percent">12%</span>
-      </div>
-      <p class="semrush-coach-card-title semrush-coach-progress-title">正在生成回答</p>
-      <p class="semrush-coach-progress-step">${questionProgressSteps[0]}</p>
-      <div class="semrush-coach-progress-bar-wrap">
-        <div class="semrush-coach-progress-bar-glow"></div>
-        <div class="semrush-coach-progress-bar" style="width: 12%"></div>
-      </div>
-      <div class="semrush-coach-progress-dots" aria-hidden="true">
-        <span class="is-active"></span>
-        <span></span>
-        <span></span>
-      </div>
-    `;
-    historyEl.appendChild(questionProgressCard);
-    scrollHistoryToBottom();
-
-    const questionProgressBar = questionProgressCard.querySelector(".semrush-coach-progress-bar");
-    const questionProgressStepEl = questionProgressCard.querySelector(".semrush-coach-progress-step");
-    const questionProgressPercentEl = questionProgressCard.querySelector(".semrush-coach-progress-percent");
-    const questionProgressDots = Array.from(questionProgressCard.querySelectorAll(".semrush-coach-progress-dots span"));
+    const questionProgressCard = createProgressCard({
+      title: "正在生成回答",
+      steps: questionProgressSteps,
+      initialPercent: 12,
+      eyebrow: "AI Reasoning"
+    });
     const updateQuestionProgress = (step, percent) => {
-      if (questionProgressStepEl) {
-        questionProgressStepEl.textContent = questionProgressSteps[step] || "";
-      }
-      if (questionProgressBar) {
-        questionProgressBar.style.width = `${percent}%`;
-      }
-      if (questionProgressPercentEl) {
-        questionProgressPercentEl.textContent = `${Math.round(percent)}%`;
-      }
-      questionProgressDots.forEach((dot, index) => {
-        dot.classList.toggle("is-active", index <= step);
-      });
-      scrollHistoryToBottom();
+      questionProgressCard.update(step, percent);
     };
     updateQuestionProgress(0, 12);
     const questionProgressTimer = window.setInterval(() => {
+      const questionProgressBar = questionProgressCard.card.querySelector(".semrush-coach-progress-bar");
       const current = parseFloat(questionProgressBar?.style.width || "12") || 12;
       if (current < 91 && questionProgressBar) {
         const next = current < 40 ? current + 3.4 : current < 72 ? current + 1.6 : current + 0.7;
         questionProgressBar.style.width = `${Math.min(next, 91)}%`;
-        if (questionProgressPercentEl) {
-          questionProgressPercentEl.textContent = `${Math.round(Math.min(next, 91))}%`;
-        }
       }
     }, 780);
 

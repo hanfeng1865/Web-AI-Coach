@@ -57,7 +57,7 @@
   width: 446px;
   max-height: min(84vh, 860px);
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 16px;
   padding: 20px;
   border-radius: 24px;
@@ -324,12 +324,17 @@
 }
 
 .semrush-coach-history {
+  grid-row: 2;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  overflow: auto;
-  min-height: 260px;
-  padding-right: 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  padding-right: 4px;
+  padding-bottom: 32px;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
 }
 
 .semrush-coach-history::-webkit-scrollbar {
@@ -487,6 +492,101 @@
   word-break: break-word;
 }
 
+.semrush-coach-rich-content {
+  display: grid;
+  gap: 12px;
+}
+
+.semrush-coach-rich-content p,
+.semrush-coach-rich-content li,
+.semrush-coach-rich-content blockquote {
+  margin: 0;
+  color: var(--semrush-coach-text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.9;
+}
+
+.semrush-coach-rich-heading {
+  margin: 4px 0 0;
+  color: var(--semrush-coach-text);
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+}
+
+.semrush-coach-rich-heading-1 {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.semrush-coach-rich-heading-2,
+.semrush-coach-rich-heading-3 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.semrush-coach-rich-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.semrush-coach-rich-quote {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(64, 78, 72, 0.04);
+  border-left: 3px solid rgba(0, 77, 64, 0.24);
+}
+
+.semrush-coach-rich-content code {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(64, 78, 72, 0.07);
+  color: var(--semrush-coach-primary);
+  font: 12px/1.5 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.semrush-coach-rich-content a {
+  color: var(--semrush-coach-primary);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(0, 77, 64, 0.24);
+}
+
+.semrush-coach-rich-table-wrap {
+  overflow-x: auto;
+  border-radius: 16px;
+  border: 1px solid rgba(64, 78, 72, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.semrush-coach-rich-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 360px;
+}
+
+.semrush-coach-rich-table th,
+.semrush-coach-rich-table td {
+  padding: 11px 14px;
+  text-align: left;
+  border-bottom: 1px solid rgba(64, 78, 72, 0.08);
+  color: var(--semrush-coach-text);
+  font-size: 13px;
+  line-height: 1.7;
+  vertical-align: top;
+}
+
+.semrush-coach-rich-table th {
+  background: rgba(0, 77, 64, 0.05);
+  font-weight: 700;
+}
+
+.semrush-coach-rich-table tr:last-child td {
+  border-bottom: 0;
+}
+
 .semrush-coach-paste-text {
   display: none;
 }
@@ -522,6 +622,7 @@
 
 .semrush-coach-hints,
 .semrush-coach-quick-prompts {
+  grid-row: 3;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -541,11 +642,13 @@
 }
 
 .semrush-coach-form {
+  grid-row: 4;
   display: grid;
   gap: 12px;
   padding: 16px;
   border-radius: 8px;
   min-width: 0;
+  margin-top: 4px;
 }
 
 .semrush-coach-input {
@@ -710,7 +813,7 @@
   border-radius: 999px;
   height: 10px;
   overflow: hidden;
-  margin-top: 12px;
+  margin-top: 0;
   border: 1px solid rgba(0, 77, 64, 0.08);
   box-shadow:
     inset 0 1px 2px rgba(255, 255, 255, 0.8),
@@ -719,7 +822,11 @@
 
 .semrush-coach-progress-card {
   position: relative;
+  display: grid;
+  gap: 8px;
   overflow: hidden;
+  isolation: isolate;
+  scroll-margin-bottom: 36px;
   border-radius: 18px;
   background:
     radial-gradient(circle at top right, rgba(65, 214, 178, 0.14), transparent 30%),
@@ -739,6 +846,11 @@
   transform: translateX(-100%);
   animation: semrush-coach-progress-sheen 3.8s linear infinite;
   pointer-events: none;
+}
+
+.semrush-coach-progress-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .semrush-coach-progress-head {
@@ -775,11 +887,12 @@
 }
 
 .semrush-coach-progress-title {
-  margin-bottom: 8px;
+  margin: 0;
 }
 
 .semrush-coach-progress-step {
   margin: 0;
+  min-height: 22px;
   color: #48635d;
   font-size: 13px;
   line-height: 1.7;
@@ -929,7 +1042,7 @@
 
 .semrush-coach-mindmap-viewer {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .semrush-coach-mindmap-toolbar {
@@ -937,12 +1050,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  padding: 0 2px;
 }
 
 .semrush-coach-mindmap-hint {
   color: var(--semrush-coach-text-soft);
   font-size: 12px;
   line-height: 1.4;
+  font-weight: 600;
 }
 
 .semrush-coach-mindmap-toolbar-actions {
@@ -952,33 +1067,45 @@
 }
 
 .semrush-coach-mindmap-tool {
-  min-width: 30px;
-  height: 30px;
-  padding: 0 10px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 12px;
   border: 1px solid rgba(64, 78, 72, 0.12);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--semrush-coach-text);
   font: inherit;
   font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 8px 18px rgba(18, 31, 28, 0.06);
+  transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
 }
 
 .semrush-coach-mindmap-tool-label {
-  min-width: 54px;
+  min-width: 60px;
+}
+
+.semrush-coach-mindmap-tool:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(18, 31, 28, 0.10);
+  background: #ffffff;
 }
 
 .semrush-coach-mindmap-canvas {
   position: relative;
   height: 360px;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: 20px;
   border: 1px solid rgba(64, 78, 72, 0.08);
   cursor: grab;
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,246,241,0.96)),
-    radial-gradient(circle at top left, rgba(47, 111, 237, 0.06), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(131, 88, 255, 0.05), transparent 24%);
+    radial-gradient(circle at top left, rgba(47, 111, 237, 0.08), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(131, 88, 255, 0.06), transparent 24%),
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(249,248,244,0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 14px 28px rgba(18, 31, 28, 0.06);
 }
 
 .semrush-coach-mindmap-canvas-dragging {
@@ -1001,6 +1128,7 @@
   left: 0;
   transform-origin: 0 0;
   will-change: transform;
+  transition: transform 180ms ease;
 }
 
 .semrush-coach-mindmap-svg {
