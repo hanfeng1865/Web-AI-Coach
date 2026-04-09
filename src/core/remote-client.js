@@ -270,6 +270,7 @@ function buildMessages(payload, localDraft) {
     locale: payload.locale || "zh-CN",
     conversationHistory: payload.conversationHistory || [],
     pageSnapshot: payload.pageSnapshot,
+    selectedRegion: payload.pageSnapshot?.selectedRegion || null,
     hasScreenshot: Boolean(payload.screenshot?.dataUrl),
     localDraft
   };
@@ -651,6 +652,70 @@ export async function generatePageSummaryAnalysis({ payload, settings }) {
     },
     timeoutMs
   });
+  const content = data?.choices?.[0]?.message?.content;
+  return attachUsageMeta(safeParseModelJson(content), data);
+}
+
+const PAGE_DIFF_SYSTEM_PROMPT = [
+  "你是一个网页拆解与竞品分析助手。",
+  "用户会给你两个网页的结构化快照、整页采样摘要，以及当前页截图。",
+  "你的任务是输出一份高信息密度的双页对比 Markdown。",
+  "",
+  "输出要求：",
+  "1. 全部使用中文。",
+  "2. 只返回 JSON，不要加代码块。",
+  "3. answer 必须是可直接阅读的 Markdown。",
+  "4. 必须包含：总体定位、信息架构对比、文案与 CTA 对比、各自亮点、各自短板、可直接借鉴的动作。",
+  "5. answer 中至少包含 1 个 Markdown 表格。",
+  "6. 如果用户传了 focus，就优先围绕该维度展开。",
+  "7. 不要编造没有证据的结论；不确定时请写成谨慎判断。",
+  'Schema: {"pageSummary":"双页对比 / 竞品 Diff","answer":"markdown","suggestedNextSteps":["string"],"confidence":0.0}'
+].join("\\n");
+
+export async function generatePageDiffAnalysis({ payload, settings }) {
+  const timeoutMs = Math.max(settings.timeoutMs || DEFAULT_TIMEOUT_MS, 240000);
+
+  const userContent = [
+    {
+      type: "text",
+      text: JSON.stringify(
+        {
+          task: "PAGE_DIFF_ANALYSIS",
+          focus: payload.focus || "",
+          targetUrl: payload.targetUrl || "",
+          currentPage: payload.currentPage,
+          targetPage: payload.targetPage
+        },
+        null,
+        2
+      )
+    }
+  ];
+
+  if (payload.currentScreenshot?.dataUrl) {
+    userContent.push({
+      type: "image_url",
+      image_url: {
+        url: payload.currentScreenshot.dataUrl,
+        detail: "high"
+      }
+    });
+  }
+
+  const data = await requestModelCompletion({
+    settings,
+    feature: "page_diff",
+    requestBody: {
+      model: settings.model || DEFAULT_MODEL,
+      temperature: 0.2,
+      messages: [
+        { role: "system", content: PAGE_DIFF_SYSTEM_PROMPT },
+        { role: "user", content: userContent }
+      ]
+    },
+    timeoutMs
+  });
+
   const content = data?.choices?.[0]?.message?.content;
   return attachUsageMeta(safeParseModelJson(content), data);
 }

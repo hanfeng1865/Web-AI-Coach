@@ -38,8 +38,16 @@
     settings: { ...DEFAULT_SETTINGS },
     mode: "local",
     settingsOpen: false,
+    toolsMenuOpen: false,
     attachment: null,
-    siteEnabled: true
+    siteEnabled: true,
+    selectionActive: false,
+    selectionCleanup: null,
+    focusMode: {
+      active: false,
+      host: null,
+      theme: "dark"
+    }
   };
 
   const root = document.createElement("div");
@@ -152,6 +160,49 @@
   const formatMarkdownButtonEl = root.querySelector(".semrush-coach-format-markdown");
   const attachButtonEl = root.querySelector(".semrush-coach-attach");
   const generateSummaryButtonEl = root.querySelector(".semrush-coach-generate-summary");
+  const formToolsEl = root.querySelector(".semrush-coach-form-tools");
+  const focusModeButtonEl = document.createElement("button");
+  focusModeButtonEl.className = "semrush-coach-focus-mode";
+  focusModeButtonEl.type = "button";
+  focusModeButtonEl.textContent = "沉浸式阅读";
+  formToolsEl?.appendChild(focusModeButtonEl);
+  const toolsMenuWrapEl = document.createElement("div");
+  toolsMenuWrapEl.className = "semrush-coach-tools-menu-wrap";
+  toolsMenuWrapEl.innerHTML = `
+    <button class="semrush-coach-tools-toggle" type="button" aria-expanded="false">
+      <span class="semrush-coach-tools-toggle-icon" aria-hidden="true">
+        <svg viewBox="0 0 20 20" focusable="false">
+          <path d="M8.4 3.2a1 1 0 0 1 1 1v1.1a5 5 0 0 1 1.2.5l.8-.8a1 1 0 0 1 1.4 0l1.2 1.2a1 1 0 0 1 0 1.4l-.8.8c.2.4.4.8.5 1.2H16a1 1 0 1 1 0 2h-1.1a5 5 0 0 1-.5 1.2l.8.8a1 1 0 0 1 0 1.4l-1.2 1.2a1 1 0 0 1-1.4 0l-.8-.8a5 5 0 0 1-1.2.5V16a1 1 0 1 1-2 0v-1.1a5 5 0 0 1-1.2-.5l-.8.8a1 1 0 0 1-1.4 0L3 14a1 1 0 0 1 0-1.4l.8-.8a5 5 0 0 1-.5-1.2H2.2a1 1 0 1 1 0-2h1.1a5 5 0 0 1 .5-1.2L3 6.6a1 1 0 0 1 0-1.4l1.2-1.2a1 1 0 0 1 1.4 0l.8.8a5 5 0 0 1 1.2-.5V4.2a1 1 0 0 1 1-1Zm.6 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"></path>
+        </svg>
+      </span>
+      <span>工具</span>
+    </button>
+    <div class="semrush-coach-tools-menu semrush-coach-hidden">
+      <button class="semrush-coach-tools-item" type="button" data-tool="selection-analysis">框选分析</button>
+      <button class="semrush-coach-tools-item" type="button" data-tool="markdown">转 Markdown</button>
+      <button class="semrush-coach-tools-item" type="button" data-tool="extract-ui">提取UI规范</button>
+      <button class="semrush-coach-tools-item" type="button" data-tool="generate-prd">生成PRD</button>
+    </div>
+  `;
+  formToolsEl?.appendChild(toolsMenuWrapEl);
+  const toolsToggleButtonEl = toolsMenuWrapEl.querySelector(".semrush-coach-tools-toggle");
+  const toolsMenuEl = toolsMenuWrapEl.querySelector(".semrush-coach-tools-menu");
+  const toolsMenuItems = Array.from(toolsMenuEl?.querySelectorAll(".semrush-coach-tools-item") || []);
+  if (generateSummaryButtonEl) {
+    generateSummaryButtonEl.textContent = "总结";
+  }
+  toolsMenuItems.forEach((item) => {
+    const tool = item.getAttribute("data-tool");
+    if (tool === "selection-analysis") {
+      item.textContent = "框选分析";
+    } else if (tool === "markdown") {
+      item.textContent = "转 Markdown";
+    } else if (tool === "extract-ui") {
+      item.textContent = "提取UI规范";
+    } else if (tool === "generate-prd") {
+      item.textContent = "生成PRD";
+    }
+  });
   
   const providerSelectEl = root.querySelector(".semrush-coach-setting-provider");
   const modelSelectEl = root.querySelector(".semrush-coach-setting-model-select");
@@ -382,7 +433,10 @@
       return parenMatch[1].trim();
     }
 
-    return trimmed.replace(/^[:\-*#\s]+/, "").trim();
+    return trimmed
+      .replace(/^[|丨│┆┊└├─—•·:：\-*#\s]+/, "")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function parseMindmapMermaid(source) {
@@ -439,8 +493,8 @@
     const links = [];
     const branchColors = ["#2f6fed", "#e05a47", "#8358ff", "#119d67", "#d57d12", "#cc4fa8"];
     const siblingGap = 34;
-    const horizontalGap = 210;
-    const rootGap = 126;
+    const horizontalGap = 224;
+    const rootGap = 146;
     const padding = 54;
 
     const countUnits = (text) =>
@@ -485,10 +539,10 @@
 
     const prepareNode = (node, depth = 0) => {
       node.depth = depth;
-      node.lines = splitLabel(node.label, depth === 0 ? 15 : 17);
+      node.lines = splitLabel(node.label, depth === 0 ? 22 : 17);
       const maxUnits = Math.max(...node.lines.map((line) => countUnits(line)), 5);
-      node.width = Math.max(depth === 0 ? 190 : 136, Math.min(depth === 0 ? 300 : 250, 40 + maxUnits * 13));
-      node.height = Math.max(depth === 0 ? 62 : 50, 18 + node.lines.length * (depth === 0 ? 21 : 18));
+      node.width = Math.max(depth === 0 ? 280 : 136, Math.min(depth === 0 ? 420 : 250, 40 + maxUnits * (depth === 0 ? 14.5 : 13)));
+      node.height = Math.max(depth === 0 ? 74 : 50, 20 + node.lines.length * (depth === 0 ? 22 : 18));
 
       node.children.forEach((child) => prepareNode(child, depth + 1));
 
@@ -608,6 +662,11 @@
 
     const svg = `
       <svg class="semrush-coach-mindmap-svg${modal ? " semrush-coach-mindmap-svg-modal" : ""}" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="脑图预览">
+        <defs>
+          <filter id="semrushMindmapShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="rgba(18,31,28,0.12)"/>
+          </filter>
+        </defs>
         ${layout.links
           .map((link) => {
             const isRight = (link.to.side || "right") === "right";
@@ -619,26 +678,31 @@
             const stroke = layout.branchColors[link.branchIndex % layout.branchColors.length];
             const cp1x = isRight ? startX + curve : startX - curve;
             const cp2x = isRight ? endX - curve : endX + curve;
-            return `<path d="M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}" fill="none" stroke="${stroke}" stroke-width="${link.from.depth === 0 ? 3.5 : 2.3}" stroke-linecap="round"/>`;
+            return `
+              <path d="M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}" fill="none" stroke="${stroke}" stroke-opacity="0.18" stroke-width="${link.from.depth === 0 ? 8 : 5}" stroke-linecap="round"/>
+              <path d="M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}" fill="none" stroke="${stroke}" stroke-width="${link.from.depth === 0 ? 4 : 2.6}" stroke-linecap="round"/>
+            `;
           })
           .join("")}
         ${layout.nodes
           .map((node) => {
-            const fill = node.depth === 0 ? "#fff2c2" : "#ffffff";
-            const stroke = node.depth === 0 ? "#f0c96b" : "rgba(64, 78, 72, 0.14)";
-            const textColor = "#20312c";
-            const fontSize = node.depth === 0 ? 18 : 14;
-            const lineHeight = node.depth === 0 ? 21 : 18;
+            const branchColor = layout.branchColors[node.branchIndex % layout.branchColors.length];
+            const fill = node.depth === 0 ? "#0c5e50" : "#ffffff";
+            const stroke = node.depth === 0 ? "#0c5e50" : "rgba(64, 78, 72, 0.10)";
+            const textColor = node.depth === 0 ? "#f5fbf8" : "#20312c";
+            const fontSize = node.depth === 0 ? 19 : 14;
+            const lineHeight = node.depth === 0 ? 22 : 19;
             const textStartY =
               node.y + node.height / 2 - ((node.lines.length - 1) * lineHeight) / 2 + 5;
             return `
-              <g>
-                <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${node.depth === 0 ? 20 : 16}" fill="${fill}" stroke="${stroke}" stroke-width="1.2"></rect>
+              <g filter="url(#semrushMindmapShadow)">
+                <rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${node.depth === 0 ? 22 : 18}" fill="${fill}" stroke="${stroke}" stroke-width="${node.depth === 0 ? 0 : 1.1}"></rect>
+                ${node.depth === 0 ? "" : `<rect x="${node.x + 10}" y="${node.y + 10}" width="4" height="${Math.max(18, node.height - 20)}" rx="999" fill="${branchColor}" opacity="0.92"></rect>`}
                 <text fill="${textColor}" font-size="${fontSize}" font-weight="${node.depth === 0 ? 700 : 500}" font-family="Manrope, PingFang SC, Microsoft YaHei, sans-serif">
                   ${node.lines
                     .map(
                       (line, index) =>
-                        `<tspan x="${node.x + 14}" y="${textStartY + index * lineHeight}">${escapeHtml(line)}</tspan>`
+                        `<tspan x="${node.x + (node.depth === 0 ? 18 : 24)}" y="${textStartY + index * lineHeight}">${escapeHtml(line)}</tspan>`
                     )
                     .join("")}
                 </text>
@@ -890,8 +954,12 @@
 
   function closePanel() {
     state.open = false;
+    closeToolsMenu();
     panel.classList.add("semrush-coach-hidden");
     bubble.classList.remove("semrush-coach-bubble-active");
+    if (state.selectionActive) {
+      cleanupFocusSelection();
+    }
   }
 
   function toggleSettings(open) {
@@ -899,6 +967,20 @@
     settingsPanelEl.classList.toggle("semrush-coach-hidden", !open);
     panel.classList.toggle("semrush-coach-settings-view", open);
     settingsToggleEl.classList.toggle("semrush-coach-settings-toggle-active", open);
+  }
+
+  function closeToolsMenu() {
+    state.toolsMenuOpen = false;
+    toolsMenuEl?.classList.add("semrush-coach-hidden");
+    toolsToggleButtonEl?.setAttribute("aria-expanded", "false");
+    toolsMenuWrapEl?.classList.remove("semrush-coach-tools-menu-wrap-open");
+  }
+
+  function toggleToolsMenu(open) {
+    state.toolsMenuOpen = open;
+    toolsMenuEl?.classList.toggle("semrush-coach-hidden", !open);
+    toolsToggleButtonEl?.setAttribute("aria-expanded", open ? "true" : "false");
+    toolsMenuWrapEl?.classList.toggle("semrush-coach-tools-menu-wrap-open", open);
   }
 
   function setLoading(loading) {
@@ -1424,6 +1506,55 @@
     `;
   }
 
+  function createProgressCard({ title, steps, initialPercent = 6, eyebrow = "AI Flow" }) {
+    const progressCard = document.createElement("article");
+    progressCard.className = "semrush-coach-card semrush-coach-progress-card";
+    progressCard.innerHTML = `
+      <div class="semrush-coach-progress-head">
+        <span class="semrush-coach-progress-eyebrow">${escapeHtml(eyebrow)}</span>
+        <span class="semrush-coach-progress-percent">${Math.round(initialPercent)}%</span>
+      </div>
+      <p class="semrush-coach-card-title semrush-coach-progress-title">${escapeHtml(title)}</p>
+      <p class="semrush-coach-progress-step">${escapeHtml(steps[0] || "处理中…")}</p>
+      <div class="semrush-coach-progress-bar-wrap">
+        <div class="semrush-coach-progress-bar-glow"></div>
+        <div class="semrush-coach-progress-bar" style="width: ${initialPercent}%"></div>
+      </div>
+      <div class="semrush-coach-progress-dots" aria-hidden="true">
+        ${steps.map((_, index) => `<span class="${index === 0 ? "is-active" : ""}"></span>`).join("")}
+      </div>
+    `;
+    historyEl.appendChild(progressCard);
+    scrollHistoryToBottom();
+
+    const progressBar = progressCard.querySelector(".semrush-coach-progress-bar");
+    const progressStepEl = progressCard.querySelector(".semrush-coach-progress-step");
+    const progressPercentEl = progressCard.querySelector(".semrush-coach-progress-percent");
+    const progressDots = Array.from(progressCard.querySelectorAll(".semrush-coach-progress-dots span"));
+
+    return {
+      card: progressCard,
+      update(step, percent) {
+        if (progressStepEl) {
+          progressStepEl.textContent = steps[step] || "";
+        }
+        if (progressBar) {
+          progressBar.style.width = `${percent}%`;
+        }
+        if (progressPercentEl) {
+          progressPercentEl.textContent = `${Math.round(percent)}%`;
+        }
+        progressDots.forEach((dot, index) => {
+          dot.classList.toggle("is-active", index <= step);
+        });
+        scrollHistoryToBottom();
+      },
+      remove() {
+        progressCard.remove();
+      }
+    };
+  }
+
   function clearAttachment() {
     state.attachment = null;
     fileInputEl.value = "";
@@ -1476,6 +1607,793 @@
     };
     renderAttachment();
     openPanel(true);
+  }
+
+  function normalizeFocusRect(startX, startY, endX, endY) {
+    const left = Math.min(startX, endX);
+    const top = Math.min(startY, endY);
+    const right = Math.max(startX, endX);
+    const bottom = Math.max(startY, endY);
+    return {
+      left,
+      top,
+      right,
+      bottom,
+      width: right - left,
+      height: bottom - top
+    };
+  }
+
+  function rectsIntersect(a, b) {
+    return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+  }
+
+  function isVisibleFocusNode(element) {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+
+    const text = element.innerText || element.textContent || "";
+    if (!text.trim()) {
+      return false;
+    }
+
+    const style = window.getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+      return false;
+    }
+
+    const rect = element.getBoundingClientRect();
+    return rect.width > 10 && rect.height > 10;
+  }
+
+  function cleanupFocusSelection() {
+    if (typeof state.selectionCleanup === "function") {
+      state.selectionCleanup();
+    }
+    state.selectionCleanup = null;
+    state.selectionActive = false;
+  }
+
+  function deactivateFocusMode() {
+    cleanupFocusSelection();
+    if (typeof state.focusMode.host?.__cleanup === "function") {
+      state.focusMode.host.__cleanup();
+    }
+    if (state.focusMode.host?.isConnected) {
+      state.focusMode.host.remove();
+    }
+    state.focusMode.active = false;
+    state.focusMode.host = null;
+  }
+
+  function getFocusContentNodes() {
+    return Array.from(document.querySelectorAll("h1, h2, h3, p, li, blockquote, pre")).filter(isVisibleFocusNode);
+  }
+
+  function getFocusContainerScore(element, matchedNodes) {
+    if (!(element instanceof HTMLElement) || !matchedNodes.length) {
+      return -1;
+    }
+
+    const text = (element.innerText || "").replace(/\s+/g, " ").trim();
+    if (text.length < 80) {
+      return -1;
+    }
+
+    const tag = element.tagName.toLowerCase();
+    const role = (element.getAttribute("role") || "").toLowerCase();
+    const className = (element.className || "").toString().toLowerCase();
+    const id = (element.id || "").toLowerCase();
+    const semanticBonus =
+      (tag === "article" ? 80 : 0) +
+      (tag === "main" ? 60 : 0) +
+      (role === "main" ? 60 : 0) +
+      (/article|post|content|entry|detail|reader/.test(className) ? 40 : 0) +
+      (/article|post|content|entry|detail|reader/.test(id) ? 30 : 0);
+
+    const matchedCount = matchedNodes.filter((node) => element.contains(node)).length;
+    if (!matchedCount) {
+      return -1;
+    }
+
+    const ownRect = element.getBoundingClientRect();
+    const areaPenalty = Math.min((ownRect.width * ownRect.height) / 50000, 120);
+    return semanticBonus + matchedCount * 35 + Math.min(text.length / 120, 45) - areaPenalty;
+  }
+
+  function findBestFocusContainer(matchedNodes) {
+    if (!matchedNodes.length) {
+      return null;
+    }
+
+    const visited = new Set();
+    const candidates = [];
+
+    matchedNodes.forEach((node) => {
+      let current = node.parentElement;
+      let depth = 0;
+      while (current && current !== document.body && depth < 8) {
+        if (!visited.has(current)) {
+          visited.add(current);
+          candidates.push(current);
+        }
+        current = current.parentElement;
+        depth += 1;
+      }
+    });
+
+    let best = null;
+    let bestScore = -1;
+    candidates.forEach((candidate) => {
+      const score = getFocusContainerScore(candidate, matchedNodes);
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    });
+
+    return best;
+  }
+
+  function buildFocusContent(selectionRect) {
+    const allContentNodes = getFocusContentNodes();
+    const matchedNodes = allContentNodes.filter((node) => rectsIntersect(selectionRect, node.getBoundingClientRect()));
+    const bestContainer = findBestFocusContainer(matchedNodes);
+    const candidates = bestContainer
+      ? allContentNodes.filter((node) => bestContainer.contains(node))
+      : allContentNodes;
+    const seen = new Set();
+    const blocks = [];
+    let heading = "";
+
+    candidates.forEach((node) => {
+      const rect = node.getBoundingClientRect();
+      if (!bestContainer && !rectsIntersect(selectionRect, rect)) {
+        return;
+      }
+
+      const text = (node.innerText || node.textContent || "").replace(/\s+/g, " ").trim();
+      if (!text || seen.has(text)) {
+        return;
+      }
+      seen.add(text);
+
+      const tag = node.tagName.toLowerCase();
+      if (!heading && /^h[1-3]$/.test(tag)) {
+        heading = text;
+      }
+
+      if (/^h[1-3]$/.test(tag)) {
+        blocks.push(`<h2>${escapeHtml(text)}</h2>`);
+        return;
+      }
+
+      if (tag === "li") {
+        blocks.push(`<li>${escapeHtml(text)}</li>`);
+        return;
+      }
+
+      if (tag === "blockquote") {
+        blocks.push(`<blockquote>${escapeHtml(text)}</blockquote>`);
+        return;
+      }
+
+      if (tag === "pre") {
+        blocks.push(`<pre>${escapeHtml(text)}</pre>`);
+        return;
+      }
+
+      blocks.push(`<p>${escapeHtml(text)}</p>`);
+    });
+
+    const html = blocks
+      .join("")
+      .replace(/(<li>.*?<\/li>)+/g, (match) => `<ul>${match}</ul>`);
+
+    return {
+      title: heading || document.title || "专注阅读",
+      html
+    };
+  }
+
+  function buildSelectionAnalysisText(selectionRect) {
+    const allContentNodes = getFocusContentNodes();
+    const matchedNodes = allContentNodes.filter((node) => rectsIntersect(selectionRect, node.getBoundingClientRect()));
+    const bestContainer = findBestFocusContainer(matchedNodes);
+    const candidates = bestContainer
+      ? allContentNodes.filter((node) => bestContainer.contains(node))
+      : matchedNodes;
+    const seen = new Set();
+    const lines = [];
+
+    candidates.forEach((node) => {
+      if (!bestContainer && !rectsIntersect(selectionRect, node.getBoundingClientRect())) {
+        return;
+      }
+      const text = (node.innerText || node.textContent || "").replace(/\s+/g, " ").trim();
+      if (!text || seen.has(text)) {
+        return;
+      }
+      seen.add(text);
+      lines.push(text);
+    });
+
+    return lines.join("\n\n").trim();
+  }
+
+  function activateFocusModeForSelection(selectionRect) {
+    const content = buildFocusContent(selectionRect);
+    if (!content.html) {
+      cleanupFocusSelection();
+      return;
+    }
+
+    deactivateFocusMode();
+
+    const host = document.createElement("div");
+    host.className = "semrush-coach-focus-host";
+    document.body.appendChild(host);
+
+    const shadow = host.attachShadow({ mode: "open" });
+    const currentTheme = state.focusMode.theme === "light" ? "light" : "dark";
+    shadow.innerHTML = `
+      <style>
+        :host {
+          all: initial;
+        }
+
+        .focus-shell {
+          --focus-bg: #0c1311;
+          --focus-glow: rgba(255, 255, 255, 0.06);
+          --focus-text: #f3f7f5;
+          --focus-text-soft: rgba(243, 247, 245, 0.9);
+          --focus-toolbar-bg: #111a17;
+          --focus-toolbar-border: rgba(255, 255, 255, 0.08);
+          --focus-button-bg: #dff3ec;
+          --focus-button-text: #10322b;
+          --focus-button-secondary-bg: rgba(223, 243, 236, 0.14);
+          --focus-button-secondary-border: rgba(223, 243, 236, 0.22);
+          --focus-pre-bg: rgba(255, 255, 255, 0.06);
+          position: fixed;
+          inset: 0;
+          z-index: 2147483646;
+          background:
+            radial-gradient(circle at top, var(--focus-glow), transparent 28%),
+            var(--focus-bg);
+          color: var(--focus-text);
+          font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+          overflow-y: auto;
+          overflow-x: hidden;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .focus-shell[data-theme="light"] {
+          --focus-bg: #f7f3ea;
+          --focus-glow: rgba(255, 255, 255, 0.92);
+          --focus-text: #22312d;
+          --focus-text-soft: rgba(34, 49, 45, 0.88);
+          --focus-toolbar-bg: #f3efe6;
+          --focus-toolbar-border: rgba(34, 49, 45, 0.10);
+          --focus-button-bg: #0c4f43;
+          --focus-button-text: #f5f8f6;
+          --focus-button-secondary-bg: rgba(12, 79, 67, 0.08);
+          --focus-button-secondary-border: rgba(12, 79, 67, 0.12);
+          --focus-pre-bg: rgba(34, 49, 45, 0.05);
+        }
+
+        .focus-toolbar {
+          position: sticky;
+          top: 0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 18px 20px;
+          backdrop-filter: blur(18px);
+          background: var(--focus-toolbar-bg);
+          border-bottom: 1px solid var(--focus-toolbar-border);
+        }
+
+        .focus-toolbar strong {
+          font-size: 15px;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+        }
+
+        .focus-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .focus-button {
+          border: 0;
+          border-radius: 999px;
+          padding: 10px 16px;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          color: var(--focus-button-text);
+          background: var(--focus-button-bg);
+        }
+
+        .focus-button.secondary {
+          background: var(--focus-button-secondary-bg);
+          color: var(--focus-text);
+          border: 1px solid var(--focus-button-secondary-border);
+        }
+
+        .focus-content {
+          max-width: 860px;
+          margin: 0 auto;
+          min-height: calc(100vh - 84px);
+          padding: 40px 24px 72px;
+          line-height: 1.9;
+          font-size: 18px;
+          box-sizing: border-box;
+        }
+
+        .focus-title {
+          margin: 0 0 22px;
+          font-size: clamp(28px, 4vw, 42px);
+          line-height: 1.15;
+          font-weight: 800;
+        }
+
+        .focus-body h2 {
+          margin: 30px 0 12px;
+          font-size: 24px;
+          line-height: 1.3;
+        }
+
+        .focus-body p,
+        .focus-body li,
+        .focus-body blockquote,
+        .focus-body pre {
+          margin: 0 0 16px;
+          color: var(--focus-text-soft);
+        }
+
+        .focus-body ul {
+          margin: 0 0 16px 20px;
+          padding: 0;
+        }
+
+        .focus-body blockquote {
+          padding-left: 16px;
+          border-left: 3px solid rgba(223, 243, 236, 0.32);
+        }
+
+        .focus-body pre {
+          white-space: pre-wrap;
+          padding: 16px;
+          border-radius: 16px;
+          background: var(--focus-pre-bg);
+        }
+
+        .focus-selection-action {
+          position: fixed;
+          z-index: 30;
+          border: 0;
+          border-radius: 999px;
+          padding: 10px 14px;
+          background: var(--focus-button-bg);
+          color: var(--focus-button-text);
+          font-size: 13px;
+          font-weight: 700;
+          box-shadow: 0 14px 30px rgba(8, 18, 15, 0.22);
+          cursor: pointer;
+        }
+
+        .focus-body.line-focus-active > * {
+          opacity: 0.18;
+          filter: blur(0.6px);
+          transition: opacity 180ms ease, filter 180ms ease, transform 180ms ease;
+        }
+
+        .focus-body.line-focus-active > .line-focus-keep {
+          opacity: 1;
+          filter: none;
+          position: relative;
+        }
+
+        .focus-body.line-focus-active > .line-focus-keep::before {
+          content: "";
+          position: absolute;
+          inset: -6px -14px;
+          border-radius: 18px;
+          background: rgba(255, 255, 255, 0.08);
+          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+          z-index: -1;
+        }
+
+        .focus-shell[data-theme="light"] .focus-body.line-focus-active > .line-focus-keep::before {
+          background: rgba(12, 79, 67, 0.06);
+          box-shadow: 0 0 0 1px rgba(12, 79, 67, 0.08);
+        }
+      </style>
+      <div class="focus-shell" data-theme="${currentTheme}">
+        <div class="focus-toolbar">
+          <strong>专注模式</strong>
+          <div class="focus-actions">
+            <button class="focus-button secondary focus-line-reset" type="button" data-action="clear-line-focus" style="display:none;">取消聚焦</button>
+            <button class="focus-button secondary" type="button" data-action="theme">${currentTheme === "dark" ? "切到浅色" : "切到深色"}</button>
+            <button class="focus-button secondary" type="button" data-action="reselect">重新框选</button>
+            <button class="focus-button" type="button" data-action="exit">退出</button>
+          </div>
+        </div>
+        <main class="focus-content">
+          <h1 class="focus-title">${escapeHtml(content.title)}</h1>
+          <div class="focus-body">${content.html}</div>
+        </main>
+      </div>
+    `;
+
+    const shellEl = shadow.querySelector(".focus-shell");
+    const focusBodyEl = shadow.querySelector(".focus-body");
+    const lineResetButtonEl = shadow.querySelector(".focus-line-reset");
+    let selectionActionButton = null;
+
+    const clearSelectionActionButton = () => {
+      if (selectionActionButton?.isConnected) {
+        selectionActionButton.remove();
+      }
+      selectionActionButton = null;
+    };
+
+    const clearLineFocus = () => {
+      if (!(focusBodyEl instanceof HTMLElement)) {
+        return;
+      }
+      focusBodyEl.classList.remove("line-focus-active");
+      focusBodyEl.querySelectorAll(".line-focus-keep").forEach((element) => {
+        element.classList.remove("line-focus-keep");
+      });
+      if (lineResetButtonEl instanceof HTMLElement) {
+        lineResetButtonEl.style.display = "none";
+      }
+    };
+
+    const applyLineFocus = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !(focusBodyEl instanceof HTMLElement)) {
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      const selectedRect = range.getBoundingClientRect();
+      if (!selectedRect.width && !selectedRect.height) {
+        return;
+      }
+
+      const keepers = Array.from(focusBodyEl.children).filter((block) => {
+        if (!(block instanceof HTMLElement)) {
+          return false;
+        }
+        return rectsIntersect(selectedRect, block.getBoundingClientRect());
+      });
+
+      if (!keepers.length) {
+        return;
+      }
+
+      clearLineFocus();
+      focusBodyEl.classList.add("line-focus-active");
+      keepers.forEach((block) => block.classList.add("line-focus-keep"));
+      if (lineResetButtonEl instanceof HTMLElement) {
+        lineResetButtonEl.style.display = "inline-flex";
+      }
+      clearSelectionActionButton();
+      selection.removeAllRanges();
+    };
+
+    const updateSelectionAction = () => {
+      clearSelectionActionButton();
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !(focusBodyEl instanceof HTMLElement)) {
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      const commonNode = range.commonAncestorContainer;
+      const owner = commonNode.nodeType === Node.TEXT_NODE ? commonNode.parentNode : commonNode;
+      if (!(owner instanceof Node) || !focusBodyEl.contains(owner)) {
+        return;
+      }
+
+      const rect = range.getBoundingClientRect();
+      if (!rect.width && !rect.height) {
+        return;
+      }
+
+      selectionActionButton = document.createElement("button");
+      selectionActionButton.className = "focus-selection-action";
+      selectionActionButton.type = "button";
+      selectionActionButton.textContent = "聚焦阅读";
+      selectionActionButton.style.left = `${Math.max(16, Math.min(window.innerWidth - 120, rect.left))}px`;
+      selectionActionButton.style.top = `${Math.max(16, rect.top - 48)}px`;
+      selectionActionButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        applyLineFocus();
+      });
+      shadow.appendChild(selectionActionButton);
+    };
+
+    const syncThemeButton = () => {
+      const themeButton = shadow.querySelector('[data-action="theme"]');
+      if (!(themeButton instanceof HTMLElement)) {
+        return;
+      }
+      themeButton.textContent = state.focusMode.theme === "dark" ? "切到浅色" : "切到深色";
+    };
+
+    shadow.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      const action = target.getAttribute("data-action");
+      if (action === "theme") {
+        state.focusMode.theme = state.focusMode.theme === "dark" ? "light" : "dark";
+        if (shellEl instanceof HTMLElement) {
+          shellEl.dataset.theme = state.focusMode.theme;
+        }
+        syncThemeButton();
+      } else if (action === "clear-line-focus") {
+        clearLineFocus();
+      } else if (action === "exit") {
+        deactivateFocusMode();
+      } else if (action === "reselect") {
+        deactivateFocusMode();
+        startFocusModeSelection();
+      }
+    });
+
+    const handleSelectionChange = () => {
+      window.setTimeout(updateSelectionAction, 10);
+    };
+
+    shadow.addEventListener("mouseup", handleSelectionChange);
+    window.addEventListener("mouseup", handleSelectionChange, true);
+    document.addEventListener("selectionchange", handleSelectionChange);
+
+    shadow.addEventListener("mousedown", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest(".focus-selection-action")) {
+        return;
+      }
+      clearSelectionActionButton();
+    });
+
+    shellEl?.addEventListener(
+      "scroll",
+      () => {
+        clearSelectionActionButton();
+      },
+      { passive: true }
+    );
+
+    host.__cleanup = () => {
+      clearSelectionActionButton();
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      window.removeEventListener("mouseup", handleSelectionChange, true);
+      shadow.removeEventListener("mouseup", handleSelectionChange);
+    };
+
+    syncThemeButton();
+    state.focusMode.active = true;
+    state.focusMode.host = host;
+    cleanupFocusSelection();
+  }
+
+  function startFocusModeSelection() {
+    deactivateFocusMode();
+
+    if (state.selectionActive) {
+      cleanupFocusSelection();
+      return;
+    }
+
+    state.selectionActive = true;
+
+    const overlay = document.createElement("div");
+    overlay.className = "semrush-coach-selection-overlay";
+    overlay.innerHTML = `
+      <div class="semrush-coach-selection-hint">拖动框选你想专注阅读的区域，按 Esc 取消</div>
+      <div class="semrush-coach-selection-box semrush-coach-hidden"></div>
+    `;
+    document.body.appendChild(overlay);
+
+    const box = overlay.querySelector(".semrush-coach-selection-box");
+    let startX = 0;
+    let startY = 0;
+    let dragging = false;
+
+    const updateBox = (rect) => {
+      if (!(box instanceof HTMLElement)) {
+        return;
+      }
+      box.classList.remove("semrush-coach-hidden");
+      box.style.left = `${rect.left}px`;
+      box.style.top = `${rect.top}px`;
+      box.style.width = `${rect.width}px`;
+      box.style.height = `${rect.height}px`;
+    };
+
+    const handleMouseDown = (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      dragging = true;
+      startX = event.clientX;
+      startY = event.clientY;
+      updateBox(normalizeFocusRect(startX, startY, startX, startY));
+      event.preventDefault();
+    };
+
+    const handleMouseMove = (event) => {
+      if (!dragging) {
+        return;
+      }
+      updateBox(normalizeFocusRect(startX, startY, event.clientX, event.clientY));
+      event.preventDefault();
+    };
+
+    const handleMouseUp = (event) => {
+      if (!dragging) {
+        return;
+      }
+      dragging = false;
+      const rect = normalizeFocusRect(startX, startY, event.clientX, event.clientY);
+      if (rect.width < 36 || rect.height < 36) {
+        cleanupFocusSelection();
+        return;
+      }
+      activateFocusModeForSelection(rect);
+      event.preventDefault();
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        cleanupFocusSelection();
+      }
+    };
+
+    state.selectionCleanup = () => {
+      window.removeEventListener("mousemove", handleMouseMove, true);
+      window.removeEventListener("mouseup", handleMouseUp, true);
+      window.removeEventListener("keydown", handleKeyDown, true);
+      overlay.removeEventListener("mousedown", handleMouseDown, true);
+      overlay.remove();
+    };
+
+    overlay.addEventListener("mousedown", handleMouseDown, true);
+    window.addEventListener("mousemove", handleMouseMove, true);
+    window.addEventListener("mouseup", handleMouseUp, true);
+    window.addEventListener("keydown", handleKeyDown, true);
+  }
+
+  function startSelectionAnalysis() {
+    deactivateFocusMode();
+
+    if (state.selectionActive) {
+      cleanupFocusSelection();
+      return;
+    }
+
+    state.selectionActive = true;
+
+    const overlay = document.createElement("div");
+    overlay.className = "semrush-coach-selection-overlay";
+    overlay.innerHTML = `
+      <div class="semrush-coach-selection-hint">拖动框选你想分析的正文区域，按 Esc 取消</div>
+      <div class="semrush-coach-selection-box semrush-coach-hidden"></div>
+    `;
+    document.body.appendChild(overlay);
+
+    const box = overlay.querySelector(".semrush-coach-selection-box");
+    let startX = 0;
+    let startY = 0;
+    let dragging = false;
+
+    const updateBox = (rect) => {
+      if (!(box instanceof HTMLElement)) {
+        return;
+      }
+      box.classList.remove("semrush-coach-hidden");
+      box.style.left = `${rect.left}px`;
+      box.style.top = `${rect.top}px`;
+      box.style.width = `${rect.width}px`;
+      box.style.height = `${rect.height}px`;
+    };
+
+    const handleMouseDown = (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      dragging = true;
+      startX = event.clientX;
+      startY = event.clientY;
+      updateBox(normalizeFocusRect(startX, startY, startX, startY));
+      event.preventDefault();
+    };
+
+    const handleMouseMove = (event) => {
+      if (!dragging) {
+        return;
+      }
+      updateBox(normalizeFocusRect(startX, startY, event.clientX, event.clientY));
+      event.preventDefault();
+    };
+
+    const handleMouseUp = (event) => {
+      if (!dragging) {
+        return;
+      }
+      dragging = false;
+      const rect = normalizeFocusRect(startX, startY, event.clientX, event.clientY);
+      if (rect.width < 36 || rect.height < 36) {
+        cleanupFocusSelection();
+        return;
+      }
+
+      const selectedText = buildSelectionAnalysisText(rect);
+      cleanupFocusSelection();
+
+      if (!selectedText) {
+        state.history.push({
+          role: "assistant",
+          pageSummary: "框选分析",
+          answer: "这一块我没抓到可分析的正文内容。你可以框大一点，尽量包含段落文字。",
+          suggestedNextSteps: ["重新框选更完整的正文区域"],
+          confidence: 0.4,
+          elementHints: []
+        });
+        renderHistory();
+        openPanel(true);
+        return;
+      }
+
+      openPanel(true);
+      askQuestion(`请分析我框选的这段内容，提炼关键信息、核心观点、风险点和可执行结论：\n\n${selectedText}`);
+      event.preventDefault();
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        cleanupFocusSelection();
+      }
+    };
+
+    state.selectionCleanup = () => {
+      window.removeEventListener("mousemove", handleMouseMove, true);
+      window.removeEventListener("mouseup", handleMouseUp, true);
+      window.removeEventListener("keydown", handleKeyDown, true);
+      overlay.removeEventListener("mousedown", handleMouseDown, true);
+      overlay.remove();
+    };
+
+    overlay.addEventListener("mousedown", handleMouseDown, true);
+    window.addEventListener("mousemove", handleMouseMove, true);
+    window.addEventListener("mouseup", handleMouseUp, true);
+    window.addEventListener("keydown", handleKeyDown, true);
+  }
+
+  function toggleFocusMode() {
+    if (state.selectionActive) {
+      cleanupFocusSelection();
+      return;
+    }
+
+    if (state.focusMode.active) {
+      deactivateFocusMode();
+      return;
+    }
+
+    startFocusModeSelection();
   }
 
   async function loadSettings() {
@@ -1611,7 +2529,7 @@
     let currentStep = 0;
 
     const progressCard = document.createElement("article");
-    progressCard.className = "semrush-coach-card";
+    progressCard.className = "semrush-coach-card semrush-coach-progress-card";
     progressCard.innerHTML = `
       <p class="semrush-coach-card-title">UI 规范提取中</p>
       <p class="semrush-coach-progress-step">${progressSteps[0]}</p>
@@ -1819,7 +2737,7 @@
     let currentStep = 0;
 
     const progressCard = document.createElement("article");
-    progressCard.className = "semrush-coach-card";
+    progressCard.className = "semrush-coach-card semrush-coach-progress-card";
     progressCard.innerHTML = `
       <p class="semrush-coach-card-title">产品需求文档生成中</p>
       <p class="semrush-coach-progress-step" style="font-size:13px; color:#68736d; margin: 4px 0">${progressSteps[0]}</p>
@@ -1933,7 +2851,7 @@
 
     if (generateSummaryButtonEl) {
       generateSummaryButtonEl.disabled = true;
-      generateSummaryButtonEl.textContent = "🧠 总结中…";
+      generateSummaryButtonEl.textContent = "总结中…";
     }
 
     state.history.push({
@@ -1950,7 +2868,7 @@
     ];
 
     const progressCard = document.createElement("article");
-    progressCard.className = "semrush-coach-card";
+    progressCard.className = "semrush-coach-card semrush-coach-progress-card";
     progressCard.innerHTML = `
       <p class="semrush-coach-card-title">页面总结与脑图生成中</p>
       <p class="semrush-coach-progress-step">${progressSteps[0]}</p>
@@ -2065,7 +2983,7 @@
       setLoading(false);
       if (generateSummaryButtonEl) {
         generateSummaryButtonEl.disabled = false;
-        generateSummaryButtonEl.textContent = "🧠 总结+脑图";
+        generateSummaryButtonEl.textContent = "总结";
       }
     }
   }
@@ -2200,7 +3118,66 @@
     });
     renderHistory();
 
+    const questionProgressSteps = [
+      "正在理解你的问题与目标…",
+      "正在结合页面内容与截图推理…",
+      "正在生成建议与下一步动作…"
+    ];
+    const questionProgressCard = document.createElement("article");
+    questionProgressCard.className = "semrush-coach-card semrush-coach-progress-card";
+    questionProgressCard.innerHTML = `
+      <div class="semrush-coach-progress-head">
+        <span class="semrush-coach-progress-eyebrow">AI Reasoning</span>
+        <span class="semrush-coach-progress-percent">12%</span>
+      </div>
+      <p class="semrush-coach-card-title semrush-coach-progress-title">正在生成回答</p>
+      <p class="semrush-coach-progress-step">${questionProgressSteps[0]}</p>
+      <div class="semrush-coach-progress-bar-wrap">
+        <div class="semrush-coach-progress-bar-glow"></div>
+        <div class="semrush-coach-progress-bar" style="width: 12%"></div>
+      </div>
+      <div class="semrush-coach-progress-dots" aria-hidden="true">
+        <span class="is-active"></span>
+        <span></span>
+        <span></span>
+      </div>
+    `;
+    historyEl.appendChild(questionProgressCard);
+    scrollHistoryToBottom();
+
+    const questionProgressBar = questionProgressCard.querySelector(".semrush-coach-progress-bar");
+    const questionProgressStepEl = questionProgressCard.querySelector(".semrush-coach-progress-step");
+    const questionProgressPercentEl = questionProgressCard.querySelector(".semrush-coach-progress-percent");
+    const questionProgressDots = Array.from(questionProgressCard.querySelectorAll(".semrush-coach-progress-dots span"));
+    const updateQuestionProgress = (step, percent) => {
+      if (questionProgressStepEl) {
+        questionProgressStepEl.textContent = questionProgressSteps[step] || "";
+      }
+      if (questionProgressBar) {
+        questionProgressBar.style.width = `${percent}%`;
+      }
+      if (questionProgressPercentEl) {
+        questionProgressPercentEl.textContent = `${Math.round(percent)}%`;
+      }
+      questionProgressDots.forEach((dot, index) => {
+        dot.classList.toggle("is-active", index <= step);
+      });
+      scrollHistoryToBottom();
+    };
+    updateQuestionProgress(0, 12);
+    const questionProgressTimer = window.setInterval(() => {
+      const current = parseFloat(questionProgressBar?.style.width || "12") || 12;
+      if (current < 91 && questionProgressBar) {
+        const next = current < 40 ? current + 3.4 : current < 72 ? current + 1.6 : current + 0.7;
+        questionProgressBar.style.width = `${Math.min(next, 91)}%`;
+        if (questionProgressPercentEl) {
+          questionProgressPercentEl.textContent = `${Math.round(Math.min(next, 91))}%`;
+        }
+      }
+    }, 780);
+
     try {
+      updateQuestionProgress(1, 34);
       const response = await chrome.runtime.sendMessage({
         type: "SEMRUSH_COACH_GUIDANCE",
         payload: {
@@ -2218,6 +3195,8 @@
       if (!response?.ok) {
         throw new Error(response?.error || "插件后台请求失败");
       }
+
+      updateQuestionProgress(2, 97);
 
       const needsExpanded =
         (response.data.suggestedNextSteps || []).length >= 3 ||
@@ -2255,6 +3234,8 @@
       renderHistory();
       openPanel(true);
     } finally {
+      window.clearInterval(questionProgressTimer);
+      questionProgressCard.remove();
       setLoading(false);
     }
   }
@@ -2295,6 +3276,35 @@
     fileInputEl.click();
   });
 
+  toolsToggleButtonEl?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleToolsMenu(!state.toolsMenuOpen);
+  });
+
+  toolsMenuEl?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const item = target.closest(".semrush-coach-tools-item");
+    if (!(item instanceof HTMLElement)) {
+      return;
+    }
+
+    const tool = item.getAttribute("data-tool");
+    closeToolsMenu();
+    if (tool === "selection-analysis") {
+      startSelectionAnalysis();
+    } else if (tool === "markdown") {
+      formatInputAsMarkdown();
+    } else if (tool === "extract-ui") {
+      extractUISpec();
+    } else if (tool === "generate-prd") {
+      generatePRD();
+    }
+  });
+
   const extractUIBtn = root.querySelector(".semrush-coach-extract-ui");
   if (extractUIBtn) {
     extractUIBtn.addEventListener("click", () => {
@@ -2314,6 +3324,10 @@
       generatePageSummaryAndMindmap();
     });
   }
+
+  focusModeButtonEl.addEventListener("click", () => {
+    toggleFocusMode();
+  });
 
   providerSelectEl.addEventListener("change", (e) => {
     updateProviderUI(e.target.value);
@@ -2369,6 +3383,16 @@
       return;
     }
     askQuestion(target.textContent || "");
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!state.toolsMenuOpen) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof Node) || !toolsMenuWrapEl.contains(target)) {
+      closeToolsMenu();
+    }
   });
 
   historyEl.addEventListener("click", async (event) => {

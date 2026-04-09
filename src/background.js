@@ -1,5 +1,5 @@
 import { generateGuidance } from "./core/guidance-engine.js";
-import { getDefaultRemoteSettings, generateRemoteGuidance, testRemoteConnection, generateUISpecAnalysis, generatePRDAnalysis, generatePageSummaryAnalysis, getTrialStatus } from "./core/remote-client.js";
+import { getDefaultRemoteSettings, generateRemoteGuidance, testRemoteConnection, generateUISpecAnalysis, generatePRDAnalysis, generatePageSummaryAnalysis, generatePageDiffAnalysis, getTrialStatus } from "./core/remote-client.js";
 import { buildRedactionSummary, redactArray, redactText } from "./core/redaction.js";
 
 const DEFAULT_ALLOWED_HOSTS = [
@@ -88,6 +88,59 @@ function sanitizeSummarySource(summarySource) {
       texts: (item.texts || []).map((text) => redactText(text)).filter(Boolean)
     }))
   };
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForTabComplete(tabId, timeoutMs = 20000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.status === "complete") {
+      return tab;
+    }
+    await wait(400);
+  }
+  throw new Error("等待对比页加载超时");
+}
+
+async function collectPageContextFromUrl(url) {
+  const tab = await chrome.tabs.create({ url, active: false });
+  try {
+    await waitForTabComplete(tab.id);
+    await wait(1200);
+
+    let response = null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        response = await chrome.tabs.sendMessage(tab.id, {
+          type: "SEMRUSH_COACH_COLLECT_PAGE_CONTEXT"
+        });
+      } catch (error) {
+        if (attempt === 3) {
+          throw error;
+        }
+        await wait(700);
+      }
+
+      if (response?.ok) {
+        break;
+      }
+      await wait(400);
+    }
+
+    if (!response?.ok) {
+      throw new Error(response?.error || "无法采集对比页内容");
+    }
+
+    return response.data;
+  } finally {
+    if (tab?.id) {
+      await chrome.tabs.remove(tab.id).catch(() => {});
+    }
+  }
 }
 
 function buildScreenshotFallback(localDraft) {
@@ -246,6 +299,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true, data: summaryData });
       } catch (error) {
         console.error("[AI Coach] 页面总结与脑图生成失败:", error);
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.type === "SEMRUSH_COACH_COMPARE_PAGE") {
+    (async () => {
+      try {
+        const settings = await getSettings();
+        if (!hasConfiguredRemoteAccess(settings)) {
+          sendResponse({ ok: false, error: "请先配置体验服务地址，或填写你自己的 API Key。" });
+          return;
+        }
+
+        const currentPage = {
+          pageSnapshot: sanitizeSnapshot(message.payload.currentPage?.pageSnapshot || {}),
+          summarySource: sanitizeSummarySource(message.payload.currentPage?.summarySource)
+        };
+        const targetPageRaw = await collectPageContextFromUrl(message.payload.targetUrl);
+        const targetPage = {
+          pageSnapshot: sanitizeSnapshot(targetPageRaw?.pageSnapshot || {}),
+          summarySource: sanitizeSummarySource(targetPageRaw?.summarySource)
+        };
+
+        const diffData = await generatePageDiffAnalysis({
+          payload: {
+            currentPage,
+            targetPage,
+            currentScreenshot: message.payload.currentScreenshot || null,
+            targetUrl: message.payload.targetUrl || "",
+            focus: message.payload.focus || ""
+          },
+          settings
+        });
+
+        sendResponse({ ok: true, data: diffData });
+      } catch (error) {
         sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
       }
     })();
