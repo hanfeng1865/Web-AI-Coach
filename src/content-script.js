@@ -1839,48 +1839,48 @@
     const currentTheme = state.focusMode.theme === "light" ? "light" : "dark";
     shadow.innerHTML = `
       <style>
-        :host {
-          all: initial;
-        }
-
         .focus-shell {
-          --focus-bg: #0c1311;
-          --focus-glow: rgba(255, 255, 255, 0.06);
+          --focus-bg: #050a0e;
+          --focus-glow: rgba(0, 255, 178, 0.05);
           --focus-text: #f3f7f5;
-          --focus-text-soft: rgba(243, 247, 245, 0.9);
-          --focus-toolbar-bg: #111a17;
-          --focus-toolbar-border: rgba(255, 255, 255, 0.08);
-          --focus-button-bg: #dff3ec;
-          --focus-button-text: #10322b;
-          --focus-button-secondary-bg: rgba(223, 243, 236, 0.14);
-          --focus-button-secondary-border: rgba(223, 243, 236, 0.22);
-          --focus-pre-bg: rgba(255, 255, 255, 0.06);
+          --focus-text-soft: rgba(243, 247, 245, 0.7);
+          --focus-toolbar-bg: rgba(5, 10, 14, 0.6);
+          --focus-toolbar-border: rgba(255, 255, 255, 0.04);
+          --focus-button-bg: linear-gradient(135deg, #00ffa3, #00d1ff);
+          --focus-button-text: #050d0a;
+          --focus-button-secondary-bg: rgba(255, 255, 255, 0.05);
+          --focus-button-secondary-border: rgba(255, 255, 255, 0.1);
+          --focus-pre-bg: rgba(255, 255, 255, 0.04);
           position: fixed;
           inset: 0;
           z-index: 2147483646;
-          background:
-            radial-gradient(circle at top, var(--focus-glow), transparent 28%),
-            var(--focus-bg);
+          background: #050a0e;
           color: var(--focus-text);
-          font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+          font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
           overflow-y: auto;
           overflow-x: hidden;
           overscroll-behavior: contain;
           -webkit-overflow-scrolling: touch;
+          scroll-behavior: smooth;
         }
 
-        .focus-shell[data-theme="light"] {
-          --focus-bg: #f7f3ea;
-          --focus-glow: rgba(255, 255, 255, 0.92);
-          --focus-text: #22312d;
-          --focus-text-soft: rgba(34, 49, 45, 0.88);
-          --focus-toolbar-bg: #f3efe6;
-          --focus-toolbar-border: rgba(34, 49, 45, 0.10);
-          --focus-button-bg: #0c4f43;
-          --focus-button-text: #f5f8f6;
-          --focus-button-secondary-bg: rgba(12, 79, 67, 0.08);
-          --focus-button-secondary-border: rgba(12, 79, 67, 0.12);
-          --focus-pre-bg: rgba(34, 49, 45, 0.05);
+        #rain-canvas {
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          z-index: 2; /* 在背景之上 */
+          opacity: 0.8;
+          filter: drop-shadow(0 0 2px rgba(255,255,255,0.2));
+        }
+
+        .focus-shell::before {
+          content: "";
+          position: fixed;
+          inset: 0;
+          background: 
+            radial-gradient(circle at 50% 120%, rgba(0, 255, 163, 0.05), transparent),
+            radial-gradient(circle at 10% 10%, rgba(0, 209, 255, 0.03), transparent);
+          z-index: 1;
         }
 
         .focus-toolbar {
@@ -1889,140 +1889,268 @@
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 12px;
-          padding: 18px 20px;
-          backdrop-filter: blur(18px);
+          padding: 14px 24px;
+          backdrop-filter: blur(20px) saturate(180%);
           background: var(--focus-toolbar-bg);
           border-bottom: 1px solid var(--focus-toolbar-border);
+          z-index: 100;
+        }
+
+        .focus-shell {
+          --focus-bg: #050a0e;
+          --focus-glow: rgba(0, 255, 163, 0.05);
+          --focus-text: #f3f7f5;
+          --focus-text-soft: rgba(243, 247, 245, 0.7);
+          --focus-toolbar-bg: rgba(5, 10, 14, 0.6);
+          --focus-toolbar-border: rgba(255, 255, 255, 0.04);
+          --focus-button-bg: linear-gradient(135deg, #00ffa3, #00d1ff);
+          --focus-button-text: #050d0a;
+          --focus-button-secondary-bg: rgba(255, 255, 255, 0.05);
+          --focus-button-secondary-border: rgba(255, 255, 255, 0.1);
+          --focus-pre-bg: rgba(255, 255, 255, 0.04);
+          position: fixed;
+          inset: 0;
+          z-index: 2147483646;
+          background: var(--focus-bg);
+          color: var(--focus-text);
+          font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          overflow-y: auto;
+          overflow-x: hidden;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+          scroll-behavior: smooth;
+          transition: background 0.5s ease, color 0.3s ease;
+        }
+
+        .focus-shell[data-theme="light"] {
+          --focus-bg: #f7f9f9;
+          --focus-text: #1a1a1b;
+          --focus-text-soft: rgba(0, 0, 0, 0.6);
+          --focus-toolbar-bg: rgba(247, 249, 249, 0.85);
+          --focus-toolbar-border: rgba(0, 0, 0, 0.05);
+          --focus-button-secondary-bg: rgba(0, 0, 0, 0.03);
+          --focus-button-secondary-border: rgba(0, 0, 0, 0.1);
+        }
+
+        .focus-shell[data-theme="glass"] {
+          --focus-bg: rgba(15, 25, 35, 0.65);
+          --focus-glow: rgba(255, 255, 255, 0.05);
+          --focus-text: #ffffff;
+          --focus-text-soft: rgba(255, 255, 255, 0.7);
+          --focus-toolbar-bg: rgba(25, 35, 45, 0.4);
+          --focus-toolbar-border: rgba(255, 255, 255, 0.1);
+          --focus-button-bg: linear-gradient(135deg, #ffffff, #d1d5db);
+          --focus-button-text: #111827;
+          --focus-button-secondary-bg: rgba(255, 255, 255, 0.1);
+          --focus-button-secondary-border: rgba(255, 255, 255, 0.2);
+          --focus-pre-bg: rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(40px) saturate(200%);
+          background: radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.12), transparent), 
+                      linear-gradient(180deg, rgba(20, 30, 40, 0.6), rgba(10, 20, 30, 0.8));
+        }
+
+        .focus-shell[data-theme="glass"] .focus-mask-pane {
+          background: rgba(0, 5, 10, 0.3);
+          backdrop-filter: blur(8px);
+        }
+
+        .focus-shell[data-theme="glass"] .focus-toolbar strong {
+          color: #ffffff;
+          text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+        }
+
+        .focus-shell[data-theme="glass"] .focus-mask-frame {
+          border-color: rgba(255, 255, 255, 0.4);
+          box-shadow: 0 0 40px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+        }
+
+        #rain-canvas {
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          z-index: 2;
+          opacity: 0.8;
+          display: block; /* 控制显隐 */
+        }
+
+        .focus-shell.rain-off #rain-canvas {
+          display: none;
+        }
+
+        .focus-toolbar {
+          position: sticky;
+          top: 0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 14px 24px;
+          backdrop-filter: blur(20px) saturate(180%);
+          background: var(--focus-toolbar-bg);
+          border-bottom: 1px solid var(--focus-toolbar-border);
+          z-index: 100;
         }
 
         .focus-toolbar strong {
-          font-size: 15px;
-          font-weight: 700;
-          letter-spacing: 0.02em;
+          font-size: 14px;
+          font-weight: 800;
+          letter-spacing: 0.12em;
+          color: #00ffa3;
+          text-shadow: 0 0 15px rgba(0, 255, 163, 0.3);
         }
 
-        .focus-actions {
-          display: flex;
-          align-items: center;
-          gap: 10px;
+        .focus-shell[data-theme="light"] .focus-toolbar strong {
+          color: #009c6a;
+          text-shadow: none;
         }
 
         .focus-button {
           border: 0;
           border-radius: 999px;
-          padding: 10px 16px;
+          padding: 8px 18px;
           font-size: 13px;
           font-weight: 700;
           cursor: pointer;
           color: var(--focus-button-text);
           background: var(--focus-button-bg);
+          box-shadow: 0 4px 15px rgba(0, 255, 163, 0.2);
+          transition: all 0.2s ease;
         }
 
         .focus-button.secondary {
           background: var(--focus-button-secondary-bg);
           color: var(--focus-text);
           border: 1px solid var(--focus-button-secondary-border);
+          backdrop-filter: blur(10px);
+          margin-right: 6px;
         }
 
         .focus-content {
-          max-width: 860px;
+          position: relative;
+          z-index: 5;
+          max-width: 820px;
           margin: 0 auto;
-          min-height: calc(100vh - 84px);
-          padding: 40px 24px 72px;
-          line-height: 1.9;
-          font-size: 18px;
+          padding: 100px 32px 180px;
+          line-height: 2.1;
+          font-size: 21px;
           box-sizing: border-box;
         }
 
-        .focus-title {
-          margin: 0 0 22px;
-          font-size: clamp(28px, 4vw, 42px);
-          line-height: 1.15;
-          font-weight: 800;
-        }
-
-        .focus-body h2 {
-          margin: 30px 0 12px;
-          font-size: 24px;
-          line-height: 1.3;
-        }
-
-        .focus-body p,
-        .focus-body li,
-        .focus-body blockquote,
-        .focus-body pre {
-          margin: 0 0 16px;
-          color: var(--focus-text-soft);
-        }
-
-        .focus-body ul {
-          margin: 0 0 16px 20px;
-          padding: 0;
-        }
-
-        .focus-body blockquote {
-          padding-left: 16px;
-          border-left: 3px solid rgba(223, 243, 236, 0.32);
-        }
-
-        .focus-body pre {
-          white-space: pre-wrap;
-          padding: 16px;
-          border-radius: 16px;
-          background: var(--focus-pre-bg);
-        }
-
-        .focus-selection-action {
+        .focus-mask-layer {
           position: fixed;
-          z-index: 30;
-          border: 0;
-          border-radius: 999px;
-          padding: 10px 14px;
-          background: var(--focus-button-bg);
-          color: var(--focus-button-text);
-          font-size: 13px;
-          font-weight: 700;
-          box-shadow: 0 14px 30px rgba(8, 18, 15, 0.22);
-          cursor: pointer;
+          inset: 0;
+          z-index: 35;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.3s ease;
         }
 
-        .focus-body.line-focus-active > * {
-          opacity: 0.18;
-          filter: blur(0.6px);
-          transition: opacity 180ms ease, filter 180ms ease, transform 180ms ease;
+        .focus-mask-pane {
+          position: absolute;
+          background: rgba(4, 8, 12, 0.9);
+          backdrop-filter: blur(4px);
+          pointer-events: auto;
         }
 
-        .focus-body.line-focus-active > .line-focus-keep {
+        .focus-shell[data-theme="light"] .focus-mask-pane {
+          background: rgba(240, 244, 246, 0.94);
+        }
+
+        .focus-mask-frame {
+          position: absolute;
+          z-index: 36;
+          border-radius: 24px;
+          border: 1.5px solid rgba(0, 255, 163, 0.45);
+          box-shadow:
+            0 24px 70px rgba(0, 0, 0, 0.45),
+            0 0 0 1px rgba(0, 255, 163, 0.1);
+          pointer-events: none;
+          opacity: 0;
+        }
+
+        .focus-shell[data-theme="light"] .focus-mask-frame {
+          border-color: rgba(0, 156, 106, 0.4);
+          box-shadow:
+            0 24px 70px rgba(7, 32, 25, 0.15),
+            0 0 0 1px rgba(0, 156, 106, 0.08);
+        }
+
+        .focus-shell.line-focus-active .focus-mask-layer,
+        .focus-shell.line-focus-active .focus-mask-frame {
           opacity: 1;
-          filter: none;
-          position: relative;
         }
 
+        /* 聚焦时的极致遮罩层效果 */
+        .focus-shell.line-focus-active .focus-title,
+        .focus-shell.line-focus-active .focus-body > * {
+          opacity: 0.98;
+          filter: none;
+          transform: none;
+          pointer-events: none;
+          transition: opacity 0.22s ease;
+        }
+
+        /* 浅色模式下的遮罩层要稍微深一点，方便对比 */
+        .focus-shell[data-theme="light"].line-focus-active .focus-title,
+        .focus-shell[data-theme="light"].line-focus-active .focus-body > * {
+          opacity: 0.98;
+        }
+
+        /* 正在阅读的行：像聚光灯一样亮起 */
+        .focus-shell.line-focus-active .line-focus-keep {
+          opacity: 1 !important;
+          filter: none !important;
+          transform: none !important;
+          position: relative;
+          z-index: 40;
+          pointer-events: auto !important;
+        }
+
+        /* 点击穿透遮罩层：只有选中的区域可以交互 */
+
+        /* 聚焦区块的氛围背景 */
         .focus-body.line-focus-active > .line-focus-keep::before {
           content: "";
           position: absolute;
-          inset: -6px -14px;
+          inset: -10px -18px;
           border-radius: 18px;
-          background: rgba(255, 255, 255, 0.08);
-          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+          background: rgba(255, 255, 255, 0.02);
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
           z-index: -1;
+          pointer-events: none;
         }
 
-        .focus-shell[data-theme="light"] .focus-body.line-focus-active > .line-focus-keep::before {
-          background: rgba(12, 79, 67, 0.06);
-          box-shadow: 0 0 0 1px rgba(12, 79, 67, 0.08);
+        .focus-selection-action {
+          position: absolute;
+          z-index: 3000;
+          border: 0;
+          border-radius: 999px;
+          padding: 14px 28px;
+          background: #fff;
+          color: #000;
+          font-size: 14px;
+          font-weight: 800;
+          box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+          cursor: pointer;
+          animation: actionPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
       </style>
       <div class="focus-shell" data-theme="${currentTheme}">
+        <canvas id="rain-canvas"></canvas>
         <div class="focus-toolbar">
           <strong>专注模式</strong>
           <div class="focus-actions">
-            <button class="focus-button secondary focus-line-reset" type="button" data-action="clear-line-focus" style="display:none;">取消聚焦</button>
-            <button class="focus-button secondary" type="button" data-action="theme">${currentTheme === "dark" ? "切到浅色" : "切到深色"}</button>
-            <button class="focus-button secondary" type="button" data-action="reselect">重新框选</button>
+            <button class="focus-button secondary focus-line-reset" type="button" data-action="clear-line-focus" style="display:none;">退出聚焦</button>
+            <button class="focus-button secondary" type="button" data-action="rain">雨效：开</button>
+            <button class="focus-button secondary" type="button" data-action="theme">${currentTheme === "dark" ? "浅色模式" : currentTheme === "light" ? "玻璃质感" : "深色模式"}</button>
             <button class="focus-button" type="button" data-action="exit">退出</button>
           </div>
+        </div>
+        <div class="focus-mask-layer" aria-hidden="true">
+          <div class="focus-mask-pane" data-pane="top"></div>
+          <div class="focus-mask-pane" data-pane="right"></div>
+          <div class="focus-mask-pane" data-pane="bottom"></div>
+          <div class="focus-mask-pane" data-pane="left"></div>
+          <div class="focus-mask-frame"></div>
         </div>
         <main class="focus-content">
           <h1 class="focus-title">${escapeHtml(content.title)}</h1>
@@ -2034,156 +2162,216 @@
     const shellEl = shadow.querySelector(".focus-shell");
     const focusBodyEl = shadow.querySelector(".focus-body");
     const lineResetButtonEl = shadow.querySelector(".focus-line-reset");
+    const maskFrameEl = shadow.querySelector(".focus-mask-frame");
+    const maskPanes = {
+      top: shadow.querySelector('.focus-mask-pane[data-pane="top"]'),
+      right: shadow.querySelector('.focus-mask-pane[data-pane="right"]'),
+      bottom: shadow.querySelector('.focus-mask-pane[data-pane="bottom"]'),
+      left: shadow.querySelector('.focus-mask-pane[data-pane="left"]')
+    };
+    const canvas = shadow.querySelector("#rain-canvas");
     let selectionActionButton = null;
+    let rainAnimationId = null;
+    let rainEnabled = true;
+    let lineFocusKeepers = [];
+
+    if (canvas instanceof HTMLCanvasElement) {
+      const ctx = canvas.getContext("2d");
+      let w, h;
+      let raindrops = [];
+      const initRain = () => {
+        w = canvas.width = window.innerWidth;
+        h = canvas.height = window.innerHeight;
+        raindrops = [];
+        for (let i = 0; i < 140; i++) {
+          raindrops.push({
+            x: Math.random() * w, y: Math.random() * h,
+            l: Math.random() * 30 + 20, s: Math.random() * 15 + 10, o: Math.random() * 0.4 + 0.1
+          });
+        }
+      };
+      const drawRain = () => {
+        if (!ctx || !rainEnabled) return;
+        ctx.clearRect(0, 0, w, h);
+        ctx.lineWidth = 1.5; ctx.lineCap = "round";
+        raindrops.forEach(p => {
+          if (state.focusMode.theme === "glass") {
+            ctx.strokeStyle = `rgba(220, 235, 255, ${p.o * 0.8})`;
+          } else {
+            ctx.strokeStyle = state.focusMode.theme === "dark" ? `rgba(180, 210, 255, ${p.o})` : `rgba(0, 50, 100, ${p.o * 0.4})`;
+          }
+          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.s * 0.05, p.y + p.l); ctx.stroke();
+          p.y += p.s; p.x += p.s * 0.05;
+          if (p.y > h) { p.y = -p.l; p.x = Math.random() * w; }
+        });
+        rainAnimationId = requestAnimationFrame(drawRain);
+      };
+      window.addEventListener("resize", initRain);
+      initRain();
+      drawRain();
+    }
 
     const clearSelectionActionButton = () => {
-      if (selectionActionButton?.isConnected) {
-        selectionActionButton.remove();
-      }
+      if (selectionActionButton?.isConnected) selectionActionButton.remove();
       selectionActionButton = null;
     };
 
-    const clearLineFocus = () => {
-      if (!(focusBodyEl instanceof HTMLElement)) {
+    const setMaskPaneRect = (pane, rect) => {
+      if (!(pane instanceof HTMLElement)) {
         return;
       }
-      focusBodyEl.classList.remove("line-focus-active");
-      focusBodyEl.querySelectorAll(".line-focus-keep").forEach((element) => {
-        element.classList.remove("line-focus-keep");
-      });
-      if (lineResetButtonEl instanceof HTMLElement) {
-        lineResetButtonEl.style.display = "none";
+      pane.style.left = `${Math.max(0, rect.left)}px`;
+      pane.style.top = `${Math.max(0, rect.top)}px`;
+      pane.style.width = `${Math.max(0, rect.width)}px`;
+      pane.style.height = `${Math.max(0, rect.height)}px`;
+    };
+
+    const updateLineFocusMask = () => {
+      if (!(shellEl instanceof HTMLElement) || !(maskFrameEl instanceof HTMLElement) || !lineFocusKeepers.length) {
+        return;
       }
+
+      const validRects = lineFocusKeepers
+        .filter((node) => node instanceof HTMLElement && node.isConnected)
+        .map((node) => node.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0);
+
+      if (!validRects.length) {
+        return;
+      }
+
+      const shellRect = shellEl.getBoundingClientRect();
+      const paddingX = 32;
+      const paddingY = 18;
+      const top = Math.max(0, Math.min(...validRects.map((rect) => rect.top)) - shellRect.top - paddingY);
+      const bottom = Math.min(shellRect.height, Math.max(...validRects.map((rect) => rect.bottom)) - shellRect.top + paddingY);
+      const left = Math.max(0, Math.min(...validRects.map((rect) => rect.left)) - shellRect.left - paddingX);
+      const right = Math.min(shellRect.width, Math.max(...validRects.map((rect) => rect.right)) - shellRect.left + paddingX);
+
+      setMaskPaneRect(maskPanes.top, { left: 0, top: 0, width: shellRect.width, height: top });
+      setMaskPaneRect(maskPanes.bottom, { left: 0, top: bottom, width: shellRect.width, height: shellRect.height - bottom });
+      setMaskPaneRect(maskPanes.left, { left: 0, top, width: left, height: bottom - top });
+      setMaskPaneRect(maskPanes.right, { left: right, top, width: shellRect.width - right, height: bottom - top });
+
+      maskFrameEl.style.left = `${left}px`;
+      maskFrameEl.style.top = `${top}px`;
+      maskFrameEl.style.width = `${Math.max(0, right - left)}px`;
+      maskFrameEl.style.height = `${Math.max(0, bottom - top)}px`;
+    };
+
+    const clearLineFocus = () => {
+      if (!(focusBodyEl instanceof HTMLElement) || !shellEl) return;
+      shellEl.classList.remove("has-focus-mask");
+      shellEl.classList.remove("line-focus-active");
+      focusBodyEl.classList.remove("line-focus-active");
+      focusBodyEl.querySelectorAll(".line-focus-keep").forEach(el => el.classList.remove("line-focus-keep"));
+      lineFocusKeepers = [];
+      if (maskFrameEl instanceof HTMLElement) {
+        maskFrameEl.style.left = "0px";
+        maskFrameEl.style.top = "0px";
+        maskFrameEl.style.width = "0px";
+        maskFrameEl.style.height = "0px";
+      }
+      if (lineResetButtonEl instanceof HTMLElement) lineResetButtonEl.style.display = "none";
     };
 
     const applyLineFocus = () => {
-      const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !(focusBodyEl instanceof HTMLElement)) {
-        return;
-      }
-
+      const selection = shadow.getSelection ? shadow.getSelection() : window.getSelection();
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !(focusBodyEl instanceof HTMLElement) || !shellEl) return;
       const range = selection.getRangeAt(0);
       const selectedRect = range.getBoundingClientRect();
-      if (!selectedRect.width && !selectedRect.height) {
-        return;
-      }
-
-      const keepers = Array.from(focusBodyEl.children).filter((block) => {
-        if (!(block instanceof HTMLElement)) {
-          return false;
-        }
-        return rectsIntersect(selectedRect, block.getBoundingClientRect());
+      const expandedRect = { left: selectedRect.left - 5, top: selectedRect.top - 5, right: selectedRect.right + 5, bottom: selectedRect.bottom + 5 };
+      const keepers = Array.from(focusBodyEl.children).filter(block => {
+        if (!(block instanceof HTMLElement)) return false;
+        return rectsIntersect(expandedRect, block.getBoundingClientRect());
       });
-
-      if (!keepers.length) {
-        return;
-      }
-
+      if (!keepers.length) return;
       clearLineFocus();
+      shellEl.classList.add("has-focus-mask");
+      shellEl.classList.add("line-focus-active");
       focusBodyEl.classList.add("line-focus-active");
-      keepers.forEach((block) => block.classList.add("line-focus-keep"));
-      if (lineResetButtonEl instanceof HTMLElement) {
-        lineResetButtonEl.style.display = "inline-flex";
-      }
+      keepers.forEach(block => block.classList.add("line-focus-keep"));
+      lineFocusKeepers = keepers;
+      updateLineFocusMask();
+      if (lineResetButtonEl instanceof HTMLElement) lineResetButtonEl.style.display = "inline-flex";
       clearSelectionActionButton();
       selection.removeAllRanges();
+      keepers[0].scrollIntoView({ behavior: "smooth", block: "center" });
     };
 
     const updateSelectionAction = () => {
       clearSelectionActionButton();
-      const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !(focusBodyEl instanceof HTMLElement)) {
-        return;
-      }
-
+      const selection = shadow.getSelection ? shadow.getSelection() : window.getSelection();
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !(focusBodyEl instanceof HTMLElement)) return;
       const range = selection.getRangeAt(0);
-      const commonNode = range.commonAncestorContainer;
-      const owner = commonNode.nodeType === Node.TEXT_NODE ? commonNode.parentNode : commonNode;
-      if (!(owner instanceof Node) || !focusBodyEl.contains(owner)) {
-        return;
-      }
-
       const rect = range.getBoundingClientRect();
-      if (!rect.width && !rect.height) {
-        return;
-      }
-
+      if (!rect.width || !rect.height) return;
       selectionActionButton = document.createElement("button");
       selectionActionButton.className = "focus-selection-action";
-      selectionActionButton.type = "button";
       selectionActionButton.textContent = "聚焦阅读";
-      selectionActionButton.style.left = `${Math.max(16, Math.min(window.innerWidth - 120, rect.left))}px`;
-      selectionActionButton.style.top = `${Math.max(16, rect.top - 48)}px`;
-      selectionActionButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        applyLineFocus();
-      });
-      shadow.appendChild(selectionActionButton);
-    };
-
-    const syncThemeButton = () => {
-      const themeButton = shadow.querySelector('[data-action="theme"]');
-      if (!(themeButton instanceof HTMLElement)) {
-        return;
-      }
-      themeButton.textContent = state.focusMode.theme === "dark" ? "切到浅色" : "切到深色";
+      const shellRect = shellEl.getBoundingClientRect();
+      selectionActionButton.style.top = `${rect.top - shellRect.top + shellEl.scrollTop - 64}px`;
+      selectionActionButton.style.left = `${rect.left - shellRect.left + (rect.width/2 - 50)}px`;
+      selectionActionButton.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); applyLineFocus(); });
+      shellEl.appendChild(selectionActionButton);
     };
 
     shadow.addEventListener("click", (event) => {
       const target = event.target;
-      if (!(target instanceof HTMLElement)) {
-        return;
-      }
-
+      if (!(target instanceof HTMLElement)) return;
       const action = target.getAttribute("data-action");
       if (action === "theme") {
-        state.focusMode.theme = state.focusMode.theme === "dark" ? "light" : "dark";
-        if (shellEl instanceof HTMLElement) {
-          shellEl.dataset.theme = state.focusMode.theme;
-        }
-        syncThemeButton();
+        const themes = ["dark", "light", "glass"];
+        const currentIndex = themes.indexOf(state.focusMode.theme || "dark");
+        const nextTheme = themes[(currentIndex + 1) % themes.length];
+        state.focusMode.theme = nextTheme;
+        
+        if (shellEl instanceof HTMLElement) shellEl.dataset.theme = nextTheme;
+        
+        const labels = { dark: "浅色模式", light: "玻璃质感", glass: "深色模式" };
+        target.textContent = labels[nextTheme];
+        return;
+      } else if (action === "rain") {
+        rainEnabled = !rainEnabled;
+        if (shellEl instanceof HTMLElement) shellEl.classList.toggle("rain-off", !rainEnabled);
+        target.textContent = rainEnabled ? "雨效：开" : "雨效：关";
+        return;
       } else if (action === "clear-line-focus") {
-        clearLineFocus();
+        clearLineFocus(); return;
       } else if (action === "exit") {
-        deactivateFocusMode();
-      } else if (action === "reselect") {
-        deactivateFocusMode();
-        startFocusModeSelection();
+        deactivateFocusMode(); return;
+      }
+
+      if (focusBodyEl && focusBodyEl.classList.contains("line-focus-active")) {
+        const isKeep = target.closest(".line-focus-keep");
+        const isAction = target.closest(".focus-toolbar, .focus-selection-action");
+        if (!isKeep && !isAction) {
+          const selection = shadow.getSelection ? shadow.getSelection() : window.getSelection();
+          if (!selection || selection.isCollapsed) clearLineFocus();
+        }
       }
     });
 
-    const handleSelectionChange = () => {
-      window.setTimeout(updateSelectionAction, 10);
-    };
-
+    const handleSelectionChange = () => requestAnimationFrame(updateSelectionAction);
     shadow.addEventListener("mouseup", handleSelectionChange);
-    window.addEventListener("mouseup", handleSelectionChange, true);
     document.addEventListener("selectionchange", handleSelectionChange);
-
-    shadow.addEventListener("mousedown", (event) => {
-      const target = event.target;
-      if (target instanceof HTMLElement && target.closest(".focus-selection-action")) {
-        return;
-      }
+    shadow.addEventListener("mousedown", e => {
+      if (e.target instanceof HTMLElement && e.target.closest(".focus-selection-action")) return;
       clearSelectionActionButton();
     });
 
-    shellEl?.addEventListener(
-      "scroll",
-      () => {
-        clearSelectionActionButton();
-      },
-      { passive: true }
-    );
+    shellEl?.addEventListener("scroll", () => clearSelectionActionButton(), { passive: true });
+    shellEl?.addEventListener("scroll", updateLineFocusMask, { passive: true });
+    window.addEventListener("resize", updateLineFocusMask);
 
     host.__cleanup = () => {
+      if (rainAnimationId) cancelAnimationFrame(rainAnimationId);
       clearSelectionActionButton();
       document.removeEventListener("selectionchange", handleSelectionChange);
-      window.removeEventListener("mouseup", handleSelectionChange, true);
       shadow.removeEventListener("mouseup", handleSelectionChange);
+      window.removeEventListener("resize", updateLineFocusMask);
     };
 
-    syncThemeButton();
     state.focusMode.active = true;
     state.focusMode.host = host;
     cleanupFocusSelection();
