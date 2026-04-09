@@ -26,6 +26,11 @@
     allowedHosts: DEFAULT_ALLOWED_HOSTS
   };
 
+  const DEFAULT_COMPARE_FOCUS = [
+    "默认结构：竞品基本信息、目标用户/场景、信息架构、核心功能体验、非核心功能/差异化能力、运营与商业动作、优劣势总结、可借鉴建议。",
+    "默认表格：基本信息总表、用户与场景总表、信息架构对比表、核心功能对比表、非核心能力/运营动作表、优势短板与建议表。"
+  ].join("\n");
+
   const QUICK_PROMPTS = [];
 
   const state = {
@@ -143,6 +148,21 @@
   const mindmapModalEl = root.querySelector(".semrush-coach-mindmap-modal");
   const mindmapModalBodyEl = root.querySelector(".semrush-coach-mindmap-modal-body");
   const mindmapModalCloseEl = root.querySelector(".semrush-coach-mindmap-modal-close");
+  let compareModalEl = root.querySelector(".semrush-coach-compare-modal");
+  let compareModalCloseEl = root.querySelector(".semrush-coach-compare-modal-close");
+  let compareUrlInputEls = Array.from(root.querySelectorAll(".semrush-coach-compare-url"));
+  let compareFocusInputEl = root.querySelector(".semrush-coach-compare-focus");
+  let compareHelperEl = root.querySelector(".semrush-coach-compare-helper");
+  let compareUseNextEl = root.querySelector(".semrush-coach-compare-use-next");
+  let compareSubmitEl = root.querySelector(".semrush-coach-compare-submit");
+  compareModalEl?.remove();
+  compareModalEl = null;
+  compareModalCloseEl = null;
+  compareUrlInputEls = [];
+  compareFocusInputEl = null;
+  compareHelperEl = null;
+  compareUseNextEl = null;
+  compareSubmitEl = null;
   const closeButton = root.querySelector(".semrush-coach-close");
   const historyEl = root.querySelector(".semrush-coach-history");
   const chipEl = root.querySelector(".semrush-coach-page-chip");
@@ -184,11 +204,161 @@
       <button class="semrush-coach-tools-item" type="button" data-tool="extract-ui">提取UI规范</button>
       <button class="semrush-coach-tools-item" type="button" data-tool="generate-prd">生成PRD</button>
     </div>
+    <section class="semrush-coach-compare-modal semrush-coach-hidden" aria-hidden="true">
+      <div class="semrush-coach-compare-modal-backdrop"></div>
+      <div class="semrush-coach-compare-modal-dialog">
+        <div class="semrush-coach-compare-modal-header">
+          <div>
+            <p class="semrush-coach-card-title" style="margin:0;">竞品对比</p>
+            <p class="semrush-coach-compare-modal-subtitle">当前页已经算 1 个竞品，不用重复填写当前页链接。你再补充最多 3 个竞品链接，我来一起出分析报告。</p>
+          </div>
+          <button class="semrush-coach-compare-modal-close" type="button" aria-label="关闭">×</button>
+        </div>
+        <label class="semrush-coach-compare-field">
+          <span>链接 1</span>
+          <input class="semrush-coach-compare-url" type="text" placeholder="https://example.com/page-b" />
+        </label>
+        <label class="semrush-coach-compare-field">
+          <span>链接 2</span>
+          <input class="semrush-coach-compare-url" type="text" placeholder="https://example.com/page-c" />
+        </label>
+        <label class="semrush-coach-compare-field">
+          <span>链接 3</span>
+          <input class="semrush-coach-compare-url" type="text" placeholder="https://example.com/page-d" />
+        </label>
+        <label class="semrush-coach-compare-field">
+          <span>重点看什么</span>
+          <textarea class="semrush-coach-compare-focus" rows="5" placeholder="默认会按竞品分析报告来写，重点会自动带上"></textarea>
+        </label>
+        <div class="semrush-coach-compare-helper semrush-coach-hidden"></div>
+        <div class="semrush-coach-compare-actions">
+          <button class="semrush-coach-compare-use-next" type="button">带入右侧标签页</button>
+          <button class="semrush-coach-compare-submit" type="button">开始对比</button>
+        </div>
+      </div>
+    </section>
   `;
   formToolsEl?.appendChild(toolsMenuWrapEl);
+  if (!compareModalEl) {
+    const compareModalHostEl = document.createElement("section");
+    compareModalHostEl.className = "semrush-coach-compare-modal semrush-coach-hidden";
+    compareModalHostEl.setAttribute("aria-hidden", "true");
+    compareModalHostEl.innerHTML = `
+      <div class="semrush-coach-compare-modal-backdrop"></div>
+      <div class="semrush-coach-compare-modal-dialog">
+        <div class="semrush-coach-compare-modal-header">
+          <div>
+            <p class="semrush-coach-card-title" style="margin:0;">分页对比</p>
+            <p class="semrush-coach-compare-modal-subtitle">输入目标页，或一键带入当前标签页右边那个页面。</p>
+          </div>
+          <button class="semrush-coach-compare-modal-close" type="button" aria-label="关闭">×</button>
+        </div>
+        <label class="semrush-coach-compare-field">
+          <span>目标页面链接</span>
+          <input class="semrush-coach-compare-url" type="text" placeholder="https://example.com/page-b" />
+        </label>
+        <label class="semrush-coach-compare-field">
+          <span>重点对比维度</span>
+          <textarea class="semrush-coach-compare-focus" rows="3" placeholder="比如：信息架构、转化路径、文案 CTA"></textarea>
+        </label>
+        <div class="semrush-coach-compare-helper semrush-coach-hidden"></div>
+        <div class="semrush-coach-compare-actions">
+          <button class="semrush-coach-compare-use-next" type="button">使用右侧标签页</button>
+          <button class="semrush-coach-compare-submit" type="button">开始对比</button>
+        </div>
+      </div>
+    `;
+    root.appendChild(compareModalHostEl);
+    compareModalEl = compareModalHostEl;
+    compareModalCloseEl = compareModalEl.querySelector(".semrush-coach-compare-modal-close");
+    compareUrlInputEls = Array.from(compareModalEl.querySelectorAll(".semrush-coach-compare-url"));
+    compareFocusInputEl = compareModalEl.querySelector(".semrush-coach-compare-focus");
+    compareHelperEl = compareModalEl.querySelector(".semrush-coach-compare-helper");
+    compareUseNextEl = compareModalEl.querySelector(".semrush-coach-compare-use-next");
+    compareSubmitEl = compareModalEl.querySelector(".semrush-coach-compare-submit");
+    compareModalEl.innerHTML = `
+      <div class="semrush-coach-compare-modal-backdrop"></div>
+      <div class="semrush-coach-compare-modal-dialog">
+        <div class="semrush-coach-compare-modal-header">
+          <div>
+            <p class="semrush-coach-card-title" style="margin:0;">竞品对比</p>
+            <p class="semrush-coach-compare-modal-subtitle">当前页已经算 1 个竞品，不用重复填写当前页链接。你再补充最多 3 个竞品链接，我来一起出分析报告。</p>
+          </div>
+          <button class="semrush-coach-compare-modal-close" type="button" aria-label="关闭">×</button>
+        </div>
+        <label class="semrush-coach-compare-field">
+          <span>链接 1</span>
+          <input class="semrush-coach-compare-url" type="text" placeholder="https://example.com/page-b" />
+        </label>
+        <label class="semrush-coach-compare-field">
+          <span>链接 2</span>
+          <input class="semrush-coach-compare-url" type="text" placeholder="https://example.com/page-c" />
+        </label>
+        <label class="semrush-coach-compare-field">
+          <span>链接 3</span>
+          <input class="semrush-coach-compare-url" type="text" placeholder="https://example.com/page-d" />
+        </label>
+        <label class="semrush-coach-compare-field">
+          <span>重点看什么</span>
+          <textarea class="semrush-coach-compare-focus" rows="3" placeholder="比如：信息架构、文案 CTA、转化路径"></textarea>
+        </label>
+        <div class="semrush-coach-compare-helper semrush-coach-hidden"></div>
+        <div class="semrush-coach-compare-actions">
+          <button class="semrush-coach-compare-use-next" type="button">带入右侧标签页</button>
+          <button class="semrush-coach-compare-submit" type="button">开始对比</button>
+        </div>
+      </div>
+    `;
+    compareModalCloseEl = compareModalEl.querySelector(".semrush-coach-compare-modal-close");
+    compareUrlInputEls = Array.from(compareModalEl.querySelectorAll(".semrush-coach-compare-url"));
+    compareFocusInputEl = compareModalEl.querySelector(".semrush-coach-compare-focus");
+    compareHelperEl = compareModalEl.querySelector(".semrush-coach-compare-helper");
+    compareUseNextEl = compareModalEl.querySelector(".semrush-coach-compare-use-next");
+    compareSubmitEl = compareModalEl.querySelector(".semrush-coach-compare-submit");
+  }
   const toolsToggleButtonEl = toolsMenuWrapEl.querySelector(".semrush-coach-tools-toggle");
   const toolsMenuEl = toolsMenuWrapEl.querySelector(".semrush-coach-tools-menu");
+  if (toolsMenuEl instanceof HTMLElement) {
+    const comparePageItemEl = document.createElement("button");
+    comparePageItemEl.className = "semrush-coach-tools-item";
+    comparePageItemEl.type = "button";
+    comparePageItemEl.setAttribute("data-tool", "compare-page");
+    comparePageItemEl.textContent = "竞品对比";
+    toolsMenuEl.insertBefore(comparePageItemEl, toolsMenuEl.children[1] || null);
+
+    const longScreenshotItemEl = document.createElement("button");
+    longScreenshotItemEl.className = "semrush-coach-tools-item";
+    longScreenshotItemEl.type = "button";
+    longScreenshotItemEl.setAttribute("data-tool", "long-screenshot");
+    longScreenshotItemEl.textContent = "网页长截图";
+    toolsMenuEl.insertBefore(longScreenshotItemEl, toolsMenuEl.children[2] || null);
+  }
   const toolsMenuItems = Array.from(toolsMenuEl?.querySelectorAll(".semrush-coach-tools-item") || []);
+  const compareReportModalEl = document.createElement("section");
+  compareReportModalEl.className = "semrush-coach-compare-report-modal semrush-coach-hidden";
+  compareReportModalEl.setAttribute("aria-hidden", "true");
+  compareReportModalEl.innerHTML = `
+    <div class="semrush-coach-compare-report-modal-backdrop"></div>
+    <div class="semrush-coach-compare-report-modal-dialog">
+      <div class="semrush-coach-compare-report-modal-header">
+        <div>
+          <p class="semrush-coach-card-title" style="margin:0;">竞品分析报告</p>
+          <p class="semrush-coach-compare-report-modal-subtitle">长内容放到全屏里看，会轻松很多。</p>
+        </div>
+        <div class="semrush-coach-compare-report-modal-actions">
+          <button class="semrush-coach-compare-report-export" data-export="pdf" type="button">导出 PDF</button>
+          <button class="semrush-coach-compare-report-export" data-export="word" type="button">导出 Word</button>
+          <button class="semrush-coach-compare-report-modal-close" type="button" aria-label="关闭">×</button>
+        </div>
+      </div>
+      <div class="semrush-coach-compare-report-modal-body"></div>
+    </div>
+  `;
+  root.appendChild(compareReportModalEl);
+  const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-coach-compare-report-modal-body");
+  const compareReportModalCloseEl = compareReportModalEl.querySelector(".semrush-coach-compare-report-modal-close");
+  const compareReportExportButtons = Array.from(compareReportModalEl.querySelectorAll(".semrush-coach-compare-report-export"));
+  let activeCompareReportPayload = null;
   if (generateSummaryButtonEl) {
     generateSummaryButtonEl.textContent = "总结";
   }
@@ -196,6 +366,8 @@
     const tool = item.getAttribute("data-tool");
     if (tool === "selection-analysis") {
       item.textContent = "框选分析";
+    } else if (tool === "long-screenshot") {
+      item.textContent = "网页长截图";
     } else if (tool === "markdown") {
       item.textContent = "转 Markdown";
     } else if (tool === "extract-ui") {
@@ -571,6 +743,285 @@
     }
 
     return `<div class="semrush-coach-rich-content">${html.join("")}</div>`;
+  }
+
+  function renderPlainTextContent(source) {
+    const parts = String(source || "")
+      .replace(/\r\n?/g, "\n")
+      .split(/\n{2,}/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (!parts.length) {
+      const single = String(source || "").trim();
+      return single ? `<div class="semrush-coach-rich-content"><p>${escapeHtml(single)}</p></div>` : "";
+    }
+
+    return `
+      <div class="semrush-coach-rich-content">
+        ${parts.map((part) => `<p>${escapeHtml(part).replace(/\n/g, "<br />")}</p>`).join("")}
+      </div>
+    `;
+  }
+
+  function normalizeComparisonTables(tables) {
+    if (!Array.isArray(tables)) {
+      return [];
+    }
+
+    return tables
+      .map((table) => {
+        const columns = Array.isArray(table?.columns) ? table.columns.map((cell) => String(cell || "").trim()).filter(Boolean) : [];
+        const rows = Array.isArray(table?.rows)
+          ? table.rows
+              .filter((row) => Array.isArray(row))
+              .map((row) => row.map((cell) => String(cell || "").trim()))
+              .filter((row) => row.some(Boolean))
+          : [];
+
+        if (!columns.length || !rows.length) {
+          return null;
+        }
+
+        return {
+          title: String(table?.title || "").trim(),
+          columns,
+          rows
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function renderComparisonTables(tables) {
+    const safeTables = normalizeComparisonTables(tables);
+    if (!safeTables.length) {
+      return "";
+    }
+
+    return `
+      <div class="semrush-coach-compare-report">
+        ${safeTables
+          .map(
+            (table) => `
+              <section class="semrush-coach-compare-block">
+                ${table.title ? `<h4 class="semrush-coach-compare-title">${escapeHtml(table.title)}</h4>` : ""}
+                <div class="semrush-coach-compare-table-wrap">
+                  <table class="semrush-coach-compare-table">
+                    <thead>
+                      <tr>${table.columns.map((cell) => `<th>${escapeHtml(cell)}</th>`).join("")}</tr>
+                    </thead>
+                    <tbody>
+                      ${table.rows
+                        .map((row) => {
+                          const padded = [...row];
+                          while (padded.length < table.columns.length) padded.push("");
+                          return `<tr>${padded.slice(0, table.columns.length).map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`;
+                        })
+                        .join("")}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            `
+          )
+          .join("")}
+      </div>
+    `;
+  }
+
+  function renderComparisonReportBody(pageSummary, tables, answer) {
+    return `
+      <div class="semrush-coach-compare-report-full">
+        ${pageSummary ? `<h3 class="semrush-coach-compare-report-heading">${escapeHtml(pageSummary)}</h3>` : ""}
+        ${renderComparisonTables(tables)}
+        ${renderPlainTextContent(answer || "")}
+      </div>
+    `;
+  }
+
+  function buildCompareReportFilename(pageSummary, extension) {
+    const safeBase = String(pageSummary || "竞品分析报告")
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, "-")
+      .replace(/\s+/g, " ")
+      .slice(0, 48) || "竞品分析报告";
+    const now = new Date();
+    const stamp = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0")
+    ].join("");
+    return `${safeBase}-${stamp}.${extension}`;
+  }
+
+  function buildComparisonExportDocument(payload = {}) {
+    const pageSummary = escapeHtml(payload.pageSummary || "竞品分析报告");
+    const reportBody = renderComparisonReportBody(
+      payload.pageSummary || "竞品分析报告",
+      payload.comparisonTables || [],
+      payload.answer || ""
+    );
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${pageSummary}</title>
+  <style>
+    body {
+      margin: 0;
+      background: #f5f1e8;
+      color: #17211d;
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+    }
+    .report-shell {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 36px 28px 48px;
+    }
+    .report-meta {
+      margin-bottom: 18px;
+      color: #68736d;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .semrush-coach-compare-report-full,
+    .semrush-coach-compare-report,
+    .semrush-coach-compare-block {
+      display: grid;
+      gap: 18px;
+    }
+    .semrush-coach-compare-report-heading {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.35;
+      font-weight: 800;
+      color: #17211d;
+    }
+    .semrush-coach-compare-title {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.5;
+      font-weight: 800;
+      color: #17211d;
+    }
+    .semrush-coach-compare-table-wrap {
+      overflow: hidden;
+      border-radius: 16px;
+      border: 1px solid rgba(64, 78, 72, 0.16);
+      background: #fffdfa;
+    }
+    .semrush-coach-compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .semrush-coach-compare-table th,
+    .semrush-coach-compare-table td {
+      border: 1px solid rgba(64, 78, 72, 0.16);
+      padding: 12px 14px;
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+      line-height: 1.8;
+      word-break: break-word;
+      background: rgba(255, 255, 255, 0.94);
+    }
+    .semrush-coach-compare-table th {
+      background: rgba(245, 242, 236, 0.96);
+      font-weight: 800;
+    }
+    .semrush-coach-rich-content {
+      display: grid;
+      gap: 12px;
+    }
+    .semrush-coach-rich-content p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.9;
+      color: #25302b;
+    }
+    @media print {
+      body {
+        background: #ffffff;
+      }
+      .report-shell {
+        max-width: none;
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="report-shell">
+    <div class="report-meta">由 AI Coach 生成的竞品分析报告</div>
+    ${reportBody}
+  </main>
+</body>
+</html>`;
+  }
+
+  function downloadBlob(blob, filename) {
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(blob);
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }
+
+  function exportCompareReportAsWord(payload) {
+    if (!payload) {
+      return;
+    }
+    const html = buildComparisonExportDocument(payload);
+    const blob = new Blob([html], { type: "application/msword;charset=utf-8" });
+    downloadBlob(blob, buildCompareReportFilename(payload.pageSummary, "doc"));
+  }
+
+  function exportCompareReportAsPdf(payload) {
+    if (!payload) {
+      return;
+    }
+    const html = buildComparisonExportDocument(payload);
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.setAttribute("aria-hidden", "true");
+    const cleanup = () => {
+      window.setTimeout(() => iframe.remove(), 1200);
+    };
+    iframe.onload = () => {
+      const frameWindow = iframe.contentWindow;
+      if (!frameWindow) {
+        cleanup();
+        return;
+      }
+      frameWindow.onafterprint = cleanup;
+      frameWindow.focus();
+      window.setTimeout(() => {
+        try {
+          frameWindow.print();
+        } catch {
+          cleanup();
+        }
+      }, 180);
+    };
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) {
+      iframe.remove();
+      throw new Error("当前环境暂时无法导出 PDF，请稍后再试。");
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
   }
 
   function parseMindmapLabel(line) {
@@ -1040,6 +1491,98 @@
     mindmapModalBodyEl.innerHTML = "";
   }
 
+  function openCompareReportModal(payload) {
+    if (!(compareReportModalEl instanceof HTMLElement) || !(compareReportModalBodyEl instanceof HTMLElement)) {
+      return;
+    }
+    let parsed = null;
+    try {
+      parsed = typeof payload === "string" ? JSON.parse(payload) : payload;
+    } catch {
+      parsed = null;
+    }
+    if (!parsed) {
+      return;
+    }
+
+    activeCompareReportPayload = {
+      pageSummary: parsed.pageSummary || "竞品分析报告",
+      comparisonTables: normalizeComparisonTables(parsed.comparisonTables),
+      answer: parsed.answer || ""
+    };
+    compareReportModalBodyEl.innerHTML = renderComparisonReportBody(
+      activeCompareReportPayload.pageSummary,
+      activeCompareReportPayload.comparisonTables,
+      activeCompareReportPayload.answer
+    );
+    compareReportModalEl.classList.remove("semrush-coach-hidden");
+    compareReportModalEl.setAttribute("aria-hidden", "false");
+  }
+
+  function closeCompareReportModal() {
+    if (!(compareReportModalEl instanceof HTMLElement) || !(compareReportModalBodyEl instanceof HTMLElement)) {
+      return;
+    }
+    compareReportModalEl.classList.add("semrush-coach-hidden");
+    compareReportModalEl.setAttribute("aria-hidden", "true");
+    compareReportModalBodyEl.innerHTML = "";
+    activeCompareReportPayload = null;
+  }
+
+  function updateCompareHelper(message = "", isError = false) {
+    if (!(compareHelperEl instanceof HTMLElement)) {
+      return;
+    }
+    compareHelperEl.textContent = message;
+    compareHelperEl.classList.toggle("semrush-coach-hidden", !message);
+    compareHelperEl.classList.toggle("is-error", Boolean(message && isError));
+  }
+
+  function getEnabledCompareUrlInputs() {
+    return compareUrlInputEls.filter((input) => input instanceof HTMLInputElement && !input.disabled);
+  }
+
+  function getCompareTargetUrls(options = {}) {
+    const optionUrls = Array.isArray(options.targetUrls) ? options.targetUrls : options.targetUrl ? [options.targetUrl] : [];
+    const inputs = getEnabledCompareUrlInputs();
+    const values = optionUrls.length
+      ? optionUrls
+      : inputs.map((input) => input.value);
+
+    return values
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .slice(0, 3);
+  }
+
+  function openCompareModal(prefill = {}) {
+    if (!(compareModalEl instanceof HTMLElement)) {
+      return;
+    }
+    const prefillUrls = Array.isArray(prefill.urls) ? prefill.urls : prefill.url ? [prefill.url] : [];
+    getEnabledCompareUrlInputs().forEach((input, index) => {
+      input.value = prefillUrls[index] || "";
+    });
+    if (compareFocusInputEl instanceof HTMLTextAreaElement) {
+      compareFocusInputEl.value = prefill.focus || DEFAULT_COMPARE_FOCUS;
+    }
+    updateCompareHelper(prefill.helper || "", Boolean(prefill.helperError));
+    compareModalEl.classList.remove("semrush-coach-hidden");
+    compareModalEl.setAttribute("aria-hidden", "false");
+    const firstInput = getEnabledCompareUrlInputs()[0];
+    firstInput?.focus();
+    firstInput?.select?.();
+  }
+
+  function closeCompareModal() {
+    if (!(compareModalEl instanceof HTMLElement)) {
+      return;
+    }
+    compareModalEl.classList.add("semrush-coach-hidden");
+    compareModalEl.setAttribute("aria-hidden", "true");
+    updateCompareHelper("");
+  }
+
   async function revealAssistantMessage(finalData) {
     const entry = {
       role: "assistant",
@@ -1337,13 +1880,31 @@
           `
           : item.renderAsCode
               ? `<pre class="semrush-coach-code-block"><code>${escapeHtml(String(item.answer || ""))}</code></pre>`
+              : item.renderAsComparison
+                  ? `<div class="semrush-coach-compare-report-preview">${renderComparisonReportBody(item.pageSummary || "竞品分析报告", item.comparisonTables, item.answer || "")}</div>`
               : renderMarkdownContent(item.answer || "");
 
         const steps = item.renderAsMindmap ? "" : (item.suggestedNextSteps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("");
         const encodedAnswer = escapeAttribute(item.answer || "");
+        const encodedComparison = item.renderAsComparison
+          ? escapeAttribute(
+              JSON.stringify({
+                pageSummary: item.pageSummary || "竞品分析报告",
+                comparisonTables: normalizeComparisonTables(item.comparisonTables),
+                answer: item.answer || ""
+              })
+            )
+          : "";
         const actionButton = item.renderAsMindmap
           ? ""
-          : `<button class="semrush-coach-copy-btn" data-answer="${encodedAnswer}" title="一键复制">复制</button>`;
+          : item.renderAsComparison
+              ? `
+                <div class="semrush-coach-card-actions">
+                  <button class="semrush-coach-copy-btn" data-answer="${encodedAnswer}" title="一键复制">复制</button>
+                  <button class="semrush-coach-compare-open-btn" data-report="${encodedComparison}" type="button">全屏查看</button>
+                </div>
+              `
+              : `<button class="semrush-coach-copy-btn" data-answer="${encodedAnswer}" title="一键复制">复制</button>`;
 
         return `
           <article class="semrush-coach-card">
@@ -1575,9 +2136,6 @@
     }
 
     return {
-      pageHeight: doc?.scrollHeight || document.body.scrollHeight || 0,
-      viewportHeight,
-      sampleCount: samples.length,
       headings,
       keyPoints,
       paragraphs,
@@ -1692,6 +2250,215 @@
         progressCard.remove();
       }
     };
+  }
+
+  function buildLongScreenshotFilename() {
+    const safeBase = String(document.title || "网页长截图")
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, "-")
+      .replace(/\s+/g, " ")
+      .slice(0, 48) || "网页长截图";
+    const now = new Date();
+    const stamp = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0"),
+      String(now.getHours()).padStart(2, "0"),
+      String(now.getMinutes()).padStart(2, "0")
+    ].join("");
+    return `${safeBase}-longshot-${stamp}.jpg`;
+  }
+
+  function loadImageFromDataUrl(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("长截图分片加载失败"));
+      img.src = dataUrl;
+    });
+  }
+
+  function estimateViewportTopOverlayHeight() {
+    const viewportWidth = window.innerWidth || 1280;
+    const viewportHeight = window.innerHeight || 900;
+    let inset = 0;
+    const candidates = Array.from(document.body?.querySelectorAll("*") || []);
+    for (const node of candidates) {
+      if (!(node instanceof HTMLElement) || root.contains(node)) {
+        continue;
+      }
+      const style = window.getComputedStyle(node);
+      if (!["fixed", "sticky"].includes(style.position) || style.display === "none" || style.visibility === "hidden") {
+        continue;
+      }
+      const rect = node.getBoundingClientRect();
+      if (rect.height < 24 || rect.top > 2 || rect.bottom <= 0) {
+        continue;
+      }
+      if (rect.width < viewportWidth * 0.35 || rect.height > viewportHeight * 0.35) {
+        continue;
+      }
+      inset = Math.max(inset, Math.min(rect.bottom, 180));
+    }
+    return inset;
+  }
+
+  async function captureLongScreenshot() {
+    if (state.loading) {
+      return;
+    }
+
+    closeToolsMenu();
+    openPanel(true);
+    setLoading(true);
+
+    const progressCard = createProgressCard({
+      title: "网页长截图中",
+      steps: [
+        "正在计算页面长度和滚动分段…",
+        "正在逐屏截图，请稍等…",
+        "正在拼接长图并准备下载…"
+      ],
+      initialPercent: 8,
+      eyebrow: "Capture"
+    });
+
+    const doc = document.documentElement;
+    const originalY = window.scrollY;
+    const viewportHeight = window.innerHeight || 900;
+    const pageHeight = Math.max(doc?.scrollHeight || 0, document.body.scrollHeight || 0, viewportHeight);
+    const topOverlayHeight = estimateViewportTopOverlayHeight();
+    const step = Math.max(240, viewportHeight - Math.min(topOverlayHeight, Math.floor(viewportHeight * 0.28)));
+    const maxScrollY = Math.max(0, pageHeight - viewportHeight);
+    const positions = [];
+
+    for (let y = 0; y <= maxScrollY; y += step) {
+      positions.push(y);
+    }
+    if (!positions.length || positions[positions.length - 1] !== maxScrollY) {
+      positions.push(maxScrollY);
+    }
+
+    const previousDisplay = root.style.display;
+    const captures = [];
+
+    try {
+      progressCard.update(0, 14);
+      root.style.display = "none";
+
+      for (let index = 0; index < positions.length; index += 1) {
+        const y = positions[index];
+        window.scrollTo(0, y);
+        await wait(280);
+        const captureRes = await chrome.runtime.sendMessage({ type: "SEMRUSH_COACH_CAPTURE_TAB" });
+        if (!captureRes?.ok || !captureRes.dataUrl) {
+          throw new Error(captureRes?.error || "页面截图失败");
+        }
+        captures.push({ y, dataUrl: captureRes.dataUrl });
+        const percent = 18 + Math.round(((index + 1) / positions.length) * 54);
+        progressCard.update(1, Math.min(percent, 72));
+      }
+    } finally {
+      root.style.display = previousDisplay;
+      window.scrollTo(0, originalY);
+      await wait(120);
+    }
+
+    try {
+      progressCard.update(2, 82);
+      const loadedCaptures = [];
+      for (const capture of captures) {
+        loadedCaptures.push({
+          y: capture.y,
+          img: await loadImageFromDataUrl(capture.dataUrl)
+        });
+      }
+
+      if (!loadedCaptures.length) {
+        throw new Error("没有拿到可拼接的截图分片");
+      }
+
+      const naturalWidth = loadedCaptures[0].img.naturalWidth || loadedCaptures[0].img.width;
+      const naturalHeight = loadedCaptures[0].img.naturalHeight || loadedCaptures[0].img.height;
+      const cssToPixelScale = naturalHeight / viewportHeight;
+      const rawOutputHeight = Math.max(1, Math.round(pageHeight * cssToPixelScale));
+      const maxOutputHeight = 24000;
+      const shrinkRatio = rawOutputHeight > maxOutputHeight ? maxOutputHeight / rawOutputHeight : 1;
+      const renderScale = cssToPixelScale * shrinkRatio;
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(naturalWidth * shrinkRatio));
+      canvas.height = Math.max(1, Math.round(pageHeight * renderScale));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("浏览器当前无法拼接长截图");
+      }
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      let coveredBottom = 0;
+      for (const capture of loadedCaptures) {
+        const viewportBottom = Math.min(capture.y + viewportHeight, pageHeight);
+        const uniqueStart = Math.max(capture.y, coveredBottom);
+        const uniqueHeightCss = Math.max(0, viewportBottom - uniqueStart);
+        if (uniqueHeightCss <= 0) {
+          continue;
+        }
+
+        const cropTopPx = Math.round((uniqueStart - capture.y) * cssToPixelScale);
+        const cropHeightPx = Math.max(1, Math.round(uniqueHeightCss * cssToPixelScale));
+        const destY = Math.round(uniqueStart * renderScale);
+        const destHeight = Math.max(1, Math.round(uniqueHeightCss * renderScale));
+
+        ctx.drawImage(
+          capture.img,
+          0,
+          cropTopPx,
+          capture.img.naturalWidth || capture.img.width,
+          cropHeightPx,
+          0,
+          destY,
+          canvas.width,
+          destHeight
+        );
+        coveredBottom = Math.max(coveredBottom, viewportBottom);
+      }
+
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = buildLongScreenshotFilename();
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      state.history.push({
+        role: "assistant",
+        pageSummary: "网页长截图已生成",
+        answer: rawOutputHeight > maxOutputHeight
+          ? "长截图已经开始下载。因为页面太长，我顺手帮你做了一次等比压缩，避免图片大到浏览器扛不住。"
+          : "长截图已经开始下载，你直接去浏览器下载列表里找就行。",
+        suggestedNextSteps: [],
+        confidence: 0.96,
+        elementHints: []
+      });
+      renderHistory();
+      openPanel(true);
+    } catch (error) {
+      state.history.push({
+        role: "assistant",
+        pageSummary: "网页长截图失败",
+        answer: error instanceof Error ? error.message : "长截图失败了，请稍后再试。",
+        suggestedNextSteps: ["先确认当前页面已经完整加载", "如果页面特别长，滚动到底部后再试一次"],
+        confidence: 0.28,
+        elementHints: []
+      });
+      renderHistory();
+      openPanel(true);
+    } finally {
+      progressCard.remove();
+      setLoading(false);
+    }
   }
 
   function clearAttachment() {
@@ -2332,7 +3099,7 @@
           <div class="focus-actions">
             <button class="focus-button secondary focus-line-reset" type="button" data-action="clear-line-focus" style="display:none;">退出聚焦</button>
             <button class="focus-button secondary" type="button" data-action="rain">雨效：开</button>
-            <button class="focus-button secondary" type="button" data-action="theme">${currentTheme === "dark" ? "浅色模式" : currentTheme === "light" ? "玻璃质感" : "深色模式"}</button>
+            <button class="focus-button secondary" type="button" data-action="theme">${currentTheme === "dark" ? "深色模式" : currentTheme === "light" ? "浅色模式" : "玻璃质感"}</button>
             <button class="focus-button" type="button" data-action="exit">退出</button>
           </div>
         </div>
@@ -2566,7 +3333,7 @@
         
         if (shellEl instanceof HTMLElement) shellEl.dataset.theme = nextTheme;
         
-        const labels = { dark: "浅色模式", light: "玻璃质感", glass: "深色模式" };
+        const labels = { dark: "深色模式", light: "浅色模式", glass: "玻璃质感" };
         target.textContent = labels[nextTheme];
         return;
       } else if (action === "rain") {
@@ -3405,6 +4172,148 @@
     }
   }
 
+  async function comparePageWithUrl(options = {}) {
+    const rawTargetUrls = getCompareTargetUrls(options);
+    if (!rawTargetUrls.length) {
+      updateCompareHelper("至少填 1 个竞品链接。当前页默认已经算 1 个，不用重复填。", true);
+      getEnabledCompareUrlInputs()[0]?.focus();
+      return;
+    }
+
+    const normalizedTargetUrls = [];
+    const seen = new Set([window.location.href]);
+    for (const rawUrl of rawTargetUrls) {
+      let normalizedUrl = rawUrl;
+      try {
+        normalizedUrl = new URL(rawUrl, window.location.href).href;
+      } catch {
+        updateCompareHelper(`链接格式不对：${rawUrl}`, true);
+        state.history.push({
+          role: "assistant",
+          pageSummary: "竞品链接无效",
+          answer: `这个链接格式不太对：${rawUrl}。先给我完整 URL，我再继续做竞品对比。`,
+          suggestedNextSteps: ["例如：https://example.com/page-b"],
+          confidence: 0.4,
+          elementHints: []
+        });
+        renderHistory();
+        openPanel(true);
+        return;
+      }
+
+      if (seen.has(normalizedUrl)) {
+        continue;
+      }
+      seen.add(normalizedUrl);
+      normalizedTargetUrls.push(normalizedUrl);
+    }
+
+    if (!normalizedTargetUrls.length) {
+      updateCompareHelper("你填的链接和当前页重复了，换 1 个新的竞品链接就行。", true);
+      state.history.push({
+        role: "assistant",
+        pageSummary: "竞品链接重复",
+        answer: "当前页默认已经算一个竞品了，不用再把当前页链接贴进来。你补 1 到 3 个其他竞品链接就行。",
+        suggestedNextSteps: ["补一个新的竞品链接", "或者带入右侧标签页再试"],
+        confidence: 0.42,
+        elementHints: []
+      });
+      renderHistory();
+      openPanel(true);
+      return;
+    }
+
+    const focus = String(options.focus || compareFocusInputEl?.value || DEFAULT_COMPARE_FOCUS).trim();
+    closeCompareModal();
+    const snapshot = getSnapshot();
+    updatePageChip(snapshot);
+    setLoading(true);
+
+    const progressCard = createProgressCard({
+      title: "竞品对比分析中",
+      steps: [
+        "正在采集当前页结构与正文样本…",
+        "正在打开竞品页并抓取上下文…",
+        "正在生成多竞品分析报告…"
+      ],
+      initialPercent: 10,
+      eyebrow: "Page Diff"
+    });
+
+    let currentScreenshot = null;
+    let progressTimer = null;
+    try {
+      const currentSummarySource = await collectScrollablePageSummarySource();
+      progressCard.update(1, 34);
+
+      try {
+        const captureRes = await chrome.runtime.sendMessage({ type: "SEMRUSH_COACH_CAPTURE_TAB" });
+        if (captureRes?.ok && captureRes.dataUrl) {
+          currentScreenshot = { dataUrl: captureRes.dataUrl };
+        }
+      } catch (error) {
+        console.warn("竞品对比截图失败:", error);
+      }
+
+      progressTimer = window.setInterval(() => {
+        const progressBar = progressCard.card.querySelector(".semrush-coach-progress-bar");
+        const current = parseFloat(progressBar?.style.width || "34") || 34;
+        if (current < 90 && progressBar) {
+          progressBar.style.width = `${Math.min(current + 1.2, 90)}%`;
+        }
+      }, 900);
+
+      const response = await chrome.runtime.sendMessage({
+        type: "SEMRUSH_COACH_COMPARE_PAGE",
+        payload: {
+          targetUrls: normalizedTargetUrls,
+          focus,
+          currentScreenshot,
+          currentPage: {
+            pageSnapshot: snapshot,
+            summarySource: currentSummarySource
+          }
+        }
+      });
+
+      window.clearInterval(progressTimer);
+      progressCard.update(2, 98);
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "竞品对比失败");
+      }
+
+      const diffData = response.data || {};
+      state.history.push({
+        role: "assistant",
+        pageSummary: diffData.pageSummary || `竞品对比 · ${snapshot.title || "当前页"}`,
+        answer: diffData.answer || "已完成竞品对比，但模型没有返回可展示内容。",
+        comparisonTables: normalizeComparisonTables(diffData.comparisonTables),
+        renderAsComparison: true,
+        suggestedNextSteps: diffData.suggestedNextSteps || [],
+        confidence: Number(diffData.confidence) || 0.84,
+        elementHints: []
+      });
+      renderHistory();
+      openPanel(true);
+    } catch (error) {
+      state.history.push({
+        role: "assistant",
+        pageSummary: "竞品对比失败",
+        answer: error instanceof Error ? error.message : "竞品对比失败，请稍后再试。",
+        suggestedNextSteps: ["确认目标链接可以正常打开", "检查远程模型配置是否可用"],
+        confidence: 0.32,
+        elementHints: []
+      });
+      renderHistory();
+      openPanel(true);
+    } finally {
+      window.clearInterval(progressTimer);
+      progressCard.remove();
+      setLoading(false);
+    }
+  }
+
   async function pasteTextFromClipboard() {
     try {
       const clipboardText = await navigator.clipboard.readText();
@@ -3633,10 +4542,41 @@
 
   closeButton.addEventListener("click", closePanel);
   mindmapModalCloseEl?.addEventListener("click", closeMindmapModal);
+  compareModalCloseEl?.addEventListener("click", closeCompareModal);
+  compareReportModalCloseEl?.addEventListener("click", closeCompareReportModal);
+  compareReportExportButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!activeCompareReportPayload) {
+        return;
+      }
+      try {
+        const format = button.getAttribute("data-export");
+        if (format === "pdf") {
+          exportCompareReportAsPdf(activeCompareReportPayload);
+        } else if (format === "word") {
+          exportCompareReportAsWord(activeCompareReportPayload);
+        }
+      } catch (error) {
+        updateCompareHelper(error instanceof Error ? error.message : "导出失败，请稍后再试。", true);
+      }
+    });
+  });
   mindmapModalEl?.addEventListener("click", (event) => {
     const target = event.target;
     if (target instanceof HTMLElement && target.classList.contains("semrush-coach-mindmap-modal-backdrop")) {
       closeMindmapModal();
+    }
+  });
+  compareModalEl?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.classList.contains("semrush-coach-compare-modal-backdrop")) {
+      closeCompareModal();
+    }
+  });
+  compareReportModalEl?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.classList.contains("semrush-coach-compare-report-modal-backdrop")) {
+      closeCompareReportModal();
     }
   });
   settingsToggleEl.addEventListener("click", () => {
@@ -3679,6 +4619,10 @@
     closeToolsMenu();
     if (tool === "selection-analysis") {
       startSelectionAnalysis();
+    } else if (tool === "compare-page") {
+      openCompareModal();
+    } else if (tool === "long-screenshot") {
+      captureLongScreenshot();
     } else if (tool === "markdown") {
       formatInputAsMarkdown();
     } else if (tool === "extract-ui") {
@@ -3707,6 +4651,43 @@
       generatePageSummaryAndMindmap();
     });
   }
+
+  compareUseNextEl?.addEventListener("click", async () => {
+    updateCompareHelper("正在读取右侧标签页…");
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "SEMRUSH_COACH_GET_NEXT_TAB" });
+      if (!response?.ok) {
+        throw new Error(response?.error || "右侧标签页不可用");
+      }
+      const targetInput = getEnabledCompareUrlInputs().find((input) => !String(input.value || "").trim()) || getEnabledCompareUrlInputs()[0];
+      if (targetInput instanceof HTMLInputElement) {
+        targetInput.value = response.data?.url || "";
+      }
+      updateCompareHelper(response.data?.title ? `已带入：${response.data.title}` : "已带入右侧标签页");
+    } catch (error) {
+      updateCompareHelper(error instanceof Error ? error.message : "右侧标签页不可用", true);
+    }
+  });
+
+  compareSubmitEl?.addEventListener("click", () => {
+    comparePageWithUrl();
+  });
+  getEnabledCompareUrlInputs().forEach((input) => {
+    input.addEventListener("input", () => updateCompareHelper(""));
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        comparePageWithUrl();
+      }
+    });
+  });
+  compareFocusInputEl?.addEventListener("input", () => updateCompareHelper(""));
+  compareFocusInputEl?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      comparePageWithUrl();
+    }
+  });
 
   focusModeButtonEl.addEventListener("click", () => {
     toggleFocusMode();
@@ -3806,6 +4787,12 @@
       return;
     }
 
+    const compareOpenBtn = target.closest(".semrush-coach-compare-open-btn");
+    if (compareOpenBtn) {
+      openCompareReportModal(compareOpenBtn.getAttribute("data-report") || "");
+      return;
+    }
+
     const mindmapTool = target.closest(".semrush-coach-mindmap-tool");
     if (mindmapTool) {
       const viewer = mindmapTool.closest(".semrush-coach-mindmap-viewer");
@@ -3877,6 +4864,33 @@
       }
     }
   }, 1200);
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type !== "SEMRUSH_COACH_COLLECT_PAGE_CONTEXT") {
+      return false;
+    }
+
+    (async () => {
+      try {
+        const pageSnapshot = getSnapshot();
+        const summarySource = await collectScrollablePageSummarySource();
+        sendResponse({
+          ok: true,
+          data: {
+            pageSnapshot,
+            summarySource
+          }
+        });
+      } catch (error) {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : "无法采集当前页内容"
+        });
+      }
+    })();
+
+    return true;
+  });
 
   renderHistory();
   renderAttachment();

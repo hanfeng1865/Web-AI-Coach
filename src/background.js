@@ -318,18 +318,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           pageSnapshot: sanitizeSnapshot(message.payload.currentPage?.pageSnapshot || {}),
           summarySource: sanitizeSummarySource(message.payload.currentPage?.summarySource)
         };
-        const targetPageRaw = await collectPageContextFromUrl(message.payload.targetUrl);
-        const targetPage = {
-          pageSnapshot: sanitizeSnapshot(targetPageRaw?.pageSnapshot || {}),
-          summarySource: sanitizeSummarySource(targetPageRaw?.summarySource)
-        };
+        const rawTargetUrls = Array.isArray(message.payload.targetUrls)
+          ? message.payload.targetUrls
+          : message.payload.targetUrl
+            ? [message.payload.targetUrl]
+            : [];
+        const targetUrls = rawTargetUrls.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 3);
+        const targetPages = [];
+        for (const targetUrl of targetUrls) {
+          const targetPageRaw = await collectPageContextFromUrl(targetUrl);
+          targetPages.push({
+            url: targetUrl,
+            pageSnapshot: sanitizeSnapshot(targetPageRaw?.pageSnapshot || {}),
+            summarySource: sanitizeSummarySource(targetPageRaw?.summarySource)
+          });
+        }
 
         const diffData = await generatePageDiffAnalysis({
           payload: {
             currentPage,
-            targetPage,
+            targetPages,
             currentScreenshot: message.payload.currentScreenshot || null,
-            targetUrl: message.payload.targetUrl || "",
+            targetUrls,
             focus: message.payload.focus || ""
           },
           settings
@@ -338,6 +348,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true, data: diffData });
       } catch (error) {
         sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.type === "SEMRUSH_COACH_GET_NEXT_TAB") {
+    (async () => {
+      try {
+        const senderTab = sender?.tab;
+        if (!senderTab?.windowId || typeof senderTab.index !== "number") {
+          sendResponse({ ok: false, error: "无法定位当前标签页" });
+          return;
+        }
+
+        const tabs = await chrome.tabs.query({ windowId: senderTab.windowId });
+        const nextTab = tabs.find((tab) => tab.index === senderTab.index + 1 && /^https?:/i.test(tab.url || ""));
+        if (!nextTab?.url) {
+          sendResponse({ ok: false, error: "右侧没有可用网页标签页" });
+          return;
+        }
+
+        sendResponse({
+          ok: true,
+          data: {
+            url: nextTab.url,
+            title: nextTab.title || nextTab.url
+          }
+        });
+      } catch (error) {
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : "获取右侧标签页失败" });
       }
     })();
     return true;

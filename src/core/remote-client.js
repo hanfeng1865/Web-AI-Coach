@@ -1,4 +1,4 @@
-import { QUICK_PROMPTS } from "./knowledge.js";
+﻿import { QUICK_PROMPTS } from "./knowledge.js";
 
 const DEFAULT_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const DEFAULT_MODEL = "qwen-vl-max-latest";
@@ -411,7 +411,7 @@ const UI_SPEC_SYSTEM_PROMPT = [
   "### 输出规则",
   "- 所有颜色必须给出精确 Hex 值",
   "- 所有尺寸必须给出 px 数值",
-  "- 禁止感性描述（如'清新的''优雅的'），只说技术事实",
+  "- 禁止感性描述，只说技术事实",
   "- 用中文输出",
   "- 只输出纯 JSON，不要 markdown 代码块",
   "",
@@ -540,13 +540,13 @@ export async function generateUISpecAnalysis({ payload, settings }) {
 
 const PRD_SYSTEM_PROMPT = [
   "你是一个资深产品经理。用户将提供网页的快照信息及截图。",
-  "你需要逆向分析该网页的功能架构，并输出一份简明的「产品需求文档（PRD）」。",
+  "你需要逆向分析该网页的功能架构，并输出一份简明的产品需求文档（PRD）。",
   "规则：",
-  "1. 主要功能模块：请作稍微详细的技术或业务介绍。",
+  "1. 主要功能模块：请做稍微详细的技术或业务介绍。",
   "2. 次要功能模块：列出核心功能点即可，一句话带过。",
   "3. 文档使用 Markdown 格式。",
-  "4. 务必在文末用友好的口气提示用户：'如果想了解某个具体功能的详情或是技术实现，可以继续跟我对话讨论哦！'",
-  "5. 返回纯 JSON，禁止包含 markdown 代码块外壳！",
+  "4. 务必在文末用友好的口气提示用户：如果想了解某个具体功能的详情或技术实现，可以继续跟我对话讨论。",
+  "5. 返回纯 JSON，禁止包含 markdown 代码块外壳。",
   'Schema: {"pageSummary":"产品需求文档 (PRD)","answer":"这里写 Markdown 格式的 PRD 内容，注意将换行替换为 \\n"}'
 ].join("\n");
 
@@ -657,20 +657,26 @@ export async function generatePageSummaryAnalysis({ payload, settings }) {
 }
 
 const PAGE_DIFF_SYSTEM_PROMPT = [
-  "你是一个网页拆解与竞品分析助手。",
-  "用户会给你两个网页的结构化快照、整页采样摘要，以及当前页截图。",
-  "你的任务是输出一份高信息密度的双页对比 Markdown。",
+  "你是一个资深产品经理，正在输出正式的竞品分析报告。",
+  "用户会给你当前页面，加上 1 到 3 个竞品页面的结构化快照、整页采样摘要，以及当前页面截图。",
+  "你的任务不是随意点评，而是产出一份结构完整、表格优先、可直接阅读的多竞品分析报告。",
   "",
   "输出要求：",
   "1. 全部使用中文。",
   "2. 只返回 JSON，不要加代码块。",
-  "3. answer 必须是可直接阅读的 Markdown。",
-  "4. 必须包含：总体定位、信息架构对比、文案与 CTA 对比、各自亮点、各自短板、可直接借鉴的动作。",
-  "5. answer 中至少包含 1 个 Markdown 表格。",
-  "6. 如果用户传了 focus，就优先围绕该维度展开。",
-  "7. 不要编造没有证据的结论；不确定时请写成谨慎判断。",
-  'Schema: {"pageSummary":"双页对比 / 竞品 Diff","answer":"markdown","suggestedNextSteps":["string"],"confidence":0.0}'
-].join("\\n");
+  "3. answer 必须是简洁的纯文本段落，不要使用 Markdown 标题、列表、表格。",
+  "4. comparisonTables 必须是表格数组，至少给出 4 张表，能表格化的内容尽量都放进表格。",
+  "5. 每张表包含 title、columns、rows，rows 中每一行都要和 columns 列数一致。",
+  "6. 报告结构尽量参考正式竞品分析报告，优先覆盖这些模块：竞品基本信息、目标用户/场景、信息架构、核心功能体验、非核心功能/差异化能力、运营与商业动作、优劣势总结、可借鉴建议。",
+  "7. 如果行业/市场数据不足，就明确写成'当前页面证据不足'，不要编造市场规模或份额。",
+  "8. 如果用户提供了 focus，就优先围绕该维度展开，同时保留整体判断。",
+  "9. 表格风格要像报告，不要写成 Markdown 表格语法，不要输出 |---| 这种内容。",
+  "10. answer 只保留少量概述、结论、风险提醒和建议；细项对比主要放在 comparisonTables。",
+  "11. 不要把页面高度、采样点数量、可见模块数量这类低价值技术统计项写进报告或表格，除非用户明确要求。",
+  "12. 竞品的不足之处和优化建议只有在页面证据明确、推断链路清楚时再写；如果证据不足，就直接省略，或者明确写成'当前页面证据不足，暂不给出该项结论'。",
+  "13. 当前页面本身也算 1 个竞品对象，比较时要把当前页面和其他竞品一起放进表格列中。",
+  'Schema: {"pageSummary":"竞品对比","answer":"plain text","comparisonTables":[{"title":"string","columns":["string"],"rows":[["string"]]}],"suggestedNextSteps":["string"],"confidence":0.0}'
+].join("\n");
 
 export async function generatePageDiffAnalysis({ payload, settings }) {
   const timeoutMs = Math.max(settings.timeoutMs || DEFAULT_TIMEOUT_MS, 240000);
@@ -682,9 +688,9 @@ export async function generatePageDiffAnalysis({ payload, settings }) {
         {
           task: "PAGE_DIFF_ANALYSIS",
           focus: payload.focus || "",
-          targetUrl: payload.targetUrl || "",
+          targetUrls: payload.targetUrls || [],
           currentPage: payload.currentPage,
-          targetPage: payload.targetPage
+          targetPages: payload.targetPages || []
         },
         null,
         2

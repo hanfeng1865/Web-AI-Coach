@@ -587,6 +587,75 @@
   border-bottom: 0;
 }
 
+.semrush-coach-compare-report {
+  display: grid;
+  gap: 16px;
+}
+
+.semrush-coach-compare-report-preview {
+  max-height: min(62vh, 720px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.semrush-coach-compare-report-full {
+  display: grid;
+  gap: 18px;
+}
+
+.semrush-coach-compare-report-heading {
+  margin: 0;
+  color: var(--semrush-coach-text);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.semrush-coach-compare-block {
+  display: grid;
+  gap: 10px;
+}
+
+.semrush-coach-compare-title {
+  margin: 0;
+  color: var(--semrush-coach-text);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.semrush-coach-compare-table-wrap {
+  overflow-x: auto;
+  border-radius: 18px;
+  border: 1px solid rgba(64, 78, 72, 0.12);
+  background: #fffdfa;
+}
+
+.semrush-coach-compare-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.semrush-coach-compare-table th,
+.semrush-coach-compare-table td {
+  border: 1px solid rgba(64, 78, 72, 0.16);
+  padding: 12px 14px;
+  text-align: left;
+  vertical-align: top;
+  color: var(--semrush-coach-text);
+  font-size: 13px;
+  line-height: 1.8;
+  word-break: break-word;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.semrush-coach-compare-table th {
+  background: rgba(245, 242, 236, 0.96);
+  font-weight: 800;
+}
+
 .semrush-coach-paste-text {
   display: none;
 }
@@ -1012,6 +1081,37 @@
   border-color: #d1d6d4;
 }
 
+.semrush-coach-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.semrush-coach-compare-open-btn {
+  background: linear-gradient(135deg, #0c5c4e, #0f7b67);
+  border: 0;
+  color: #f5fffc;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  white-space: nowrap;
+  box-shadow: 0 10px 22px rgba(12, 92, 78, 0.16);
+}
+
+.semrush-coach-compare-open-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 24px rgba(12, 92, 78, 0.2);
+}
+
 .semrush-coach-mindmap-open-btn {
   background: transparent;
   border: 1px solid #E8ECEA;
@@ -1192,6 +1292,222 @@
   flex: 1;
 }
 
+.semrush-coach-compare-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+}
+
+.semrush-coach-compare-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 22, 19, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.semrush-coach-compare-modal-dialog {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(520px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 24px;
+  background: rgba(248, 246, 241, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 24px 64px rgba(18, 31, 28, 0.22);
+}
+
+.semrush-coach-compare-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.semrush-coach-compare-modal-subtitle {
+  margin: 6px 0 0;
+  color: var(--semrush-coach-text-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.semrush-coach-compare-modal-close {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--semrush-coach-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--semrush-coach-text);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.semrush-coach-compare-field {
+  display: grid;
+  gap: 8px;
+  color: var(--semrush-coach-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.semrush-coach-compare-url,
+.semrush-coach-compare-focus {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--semrush-coach-border);
+  border-radius: 16px;
+  background: #fcfbf8;
+  padding: 12px 14px;
+  color: var(--semrush-coach-text);
+  font: inherit;
+}
+
+.semrush-coach-compare-focus {
+  resize: vertical;
+  min-height: 92px;
+}
+
+.semrush-coach-compare-url-disabled {
+  background: rgba(64, 78, 72, 0.05);
+  color: var(--semrush-coach-text-faint);
+  cursor: not-allowed;
+}
+
+.semrush-coach-compare-helper {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(0, 77, 64, 0.08);
+  color: var(--semrush-coach-primary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.semrush-coach-compare-helper.is-error {
+  background: rgba(176, 40, 40, 0.08);
+  color: #a03434;
+}
+
+.semrush-coach-compare-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.semrush-coach-compare-use-next,
+.semrush-coach-compare-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.semrush-coach-compare-use-next {
+  border: 1px solid var(--semrush-coach-border);
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--semrush-coach-text);
+}
+
+.semrush-coach-compare-submit {
+  border: 0;
+  background: linear-gradient(135deg, #0c5c4e, #0f7b67);
+  color: #f5fffc;
+  box-shadow: 0 14px 28px rgba(12, 92, 78, 0.2);
+}
+
+.semrush-coach-compare-report-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+}
+
+.semrush-coach-compare-report-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 22, 19, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.semrush-coach-compare-report-modal-dialog {
+  position: absolute;
+  inset: 3vh 2vw;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+  border-radius: 28px;
+  background: rgba(248, 246, 241, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 24px 64px rgba(18, 31, 28, 0.22);
+}
+
+.semrush-coach-compare-report-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.semrush-coach-compare-report-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.semrush-coach-compare-report-modal-subtitle {
+  margin: 6px 0 0;
+  color: var(--semrush-coach-text-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.semrush-coach-compare-report-export {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--semrush-coach-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--semrush-coach-text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.semrush-coach-compare-report-export:hover {
+  transform: translateY(-1px);
+  background: #ffffff;
+  box-shadow: 0 10px 20px rgba(18, 31, 28, 0.08);
+}
+
+.semrush-coach-compare-report-modal-close {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--semrush-coach-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--semrush-coach-text);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.semrush-coach-compare-report-modal-body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 @media (max-width: 720px) {
   .semrush-coach-root {
     right: 12px;
@@ -1219,6 +1535,21 @@
 
   .semrush-coach-attachment-card {
     grid-template-columns: 1fr;
+  }
+
+  .semrush-coach-compare-modal-dialog,
+  .semrush-coach-compare-report-modal-dialog {
+    width: auto;
+    inset: 12px;
+    transform: none;
+    top: auto;
+    left: auto;
+    border-radius: 22px;
+  }
+
+  .semrush-coach-compare-report-modal-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .semrush-coach-form-row {

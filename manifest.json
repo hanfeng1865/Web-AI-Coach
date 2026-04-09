@@ -4,7 +4,8 @@
   "version": "1.1.0",
   "description": "任意网页一键唤出 AI 助手，自动截屏当前页面、读懂界面内容，用中文给你讲解并指出下一步怎么做。",
   "permissions": [
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>"
