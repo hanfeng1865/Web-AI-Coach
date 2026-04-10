@@ -63,7 +63,10 @@
       host: null,
       theme: "dark",
       scrollLock: null
-    }
+    },
+    settingsLoaded: false,
+    hydratingSettingsForm: false,
+    pageUnloading: false
   };
 
   const root = document.createElement("div");
@@ -109,9 +112,12 @@
           </label>
           <label class="semrush-coach-setting-full">
             <span>你的 Qwen API Key（可选，免费次数用完后使用）</span>
-            <input class="semrush-coach-setting-api-key" type="password" placeholder="填写通义千问 / Qwen 的 API Key" />
+            <div class="semrush-coach-password-wrapper" style="display: flex; align-items: center; gap: 8px;">
+              <input class="semrush-coach-setting-api-key semrush-coach-masked-input" type="text" autocomplete="off" data-lpignore="true" data-1p-ignore="true" placeholder="填写通义千问 / Qwen 的 API Key" style="flex: 1;" />
+              <button type="button" class="semrush-coach-toggle-password" style="background: none; border: none; cursor: pointer; padding: 4px; font-size: 16px; opacity: 0.7;">👁️</button>
+            </div>
           </label>
-          <label class="semrush-coach-setting-full">
+          <label class="semrush-coach-setting-full" style="display: none;">
             <span>启用网站列表（每行一个域名）</span>
             <textarea class="semrush-coach-setting-hosts" rows="5" placeholder="semrush.com&#10;polymarket.com&#10;*.example.com"></textarea>
           </label>
@@ -122,7 +128,7 @@
         </div>
         <div class="semrush-coach-settings-actions">
           <button class="semrush-coach-settings-save" type="button">保存</button>
-          <button class="semrush-coach-settings-add-site" type="button">添加当前网站</button>
+          <button class="semrush-coach-settings-add-site" type="button" style="display: none;">添加当前网站</button>
           <span class="semrush-coach-settings-status">远程模型未启用。</span>
         </div>
       </section>
@@ -416,6 +422,21 @@
 
   }
   toolsMenuEl?.querySelector('[data-tool="selection-analysis"]')?.remove();
+  const toolMenuOrder = [
+    "project-assessment",
+    "compare-page",
+    "generate-prd",
+    "extract-ui",
+    "markdown",
+    "long-screenshot",
+    "page-qr"
+  ];
+  if (toolsMenuEl instanceof HTMLElement) {
+    const orderedItems = toolMenuOrder
+      .map((tool) => toolsMenuEl.querySelector(`.semrush-coach-tools-item[data-tool="${tool}"]`))
+      .filter((item) => item instanceof HTMLElement);
+    orderedItems.forEach((item) => toolsMenuEl.appendChild(item));
+  }
   const toolsMenuItems = Array.from(toolsMenuEl?.querySelectorAll(".semrush-coach-tools-item") || []);
   const compareReportModalEl = document.createElement("section");
   compareReportModalEl.className = "semrush-coach-compare-report-modal semrush-coach-hidden";
@@ -799,9 +820,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   }
 
   function isCurrentSiteEnabled(settings) {
-    return parseAllowedHosts(settings.allowedHosts).some((pattern) =>
-      hostMatchesPattern(getCurrentHostname(), pattern)
-    );
+    return true; // 全局无感放行所有网站
   }
 
   function getDomApi() {
@@ -2077,6 +2096,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   }
 
   function fillSettingsForm() {
+    state.hydratingSettingsForm = true;
     const defaultUrl = state.settings.apiUrl || PROVIDERS.qianwen.url;
     settingsFormEls.trialApiUrl.value = state.settings.trialApiUrl || "";
     settingsFormEls.apiUrl.value = defaultUrl;
@@ -2096,6 +2116,20 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     
     providerSelectEl.value = matchedProvider;
     updateProviderUI(matchedProvider, state.settings.model);
+    state.hydratingSettingsForm = false;
+  }
+
+  function describeStoredKey(settings = state.settings) {
+    const key = String(settings?.apiKey || "").trim();
+    return key ? `已检测到已保存的 key，长度 ${key.length}` : "未检测到已保存的 key";
+  }
+
+  function setSettingsStatus(baseText, { includeStorageState = false } = {}) {
+    if (!includeStorageState) {
+      settingsStatusEl.textContent = baseText;
+      return;
+    }
+    settingsStatusEl.textContent = `${baseText} | ${describeStoredKey()}`;
   }
 
   function updateProviderUI(providerKey, currentModel) {
@@ -2156,7 +2190,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   }
 
   function hasUserApiAccess(settings = state.settings) {
-    return Boolean(settings.remoteEnabled && settings.apiUrl && settings.apiKey);
+    return Boolean(settings.remoteEnabled && settings.apiKey);
   }
 
   function hasConfiguredRemoteAccess(settings = state.settings) {
@@ -3517,7 +3551,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           position: absolute;
           background: rgba(4, 8, 12, 0.9);
           backdrop-filter: blur(4px);
-          pointer-events: auto;
+          pointer-events: none;
         }
 
         .focus-shell[data-theme="light"] .focus-mask-pane {
@@ -3554,7 +3588,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           opacity: 0.98;
           filter: none;
           transform: none;
-          pointer-events: none;
+          pointer-events: auto;
           transition: opacity 0.22s ease;
         }
 
@@ -4171,11 +4205,29 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     }
 
     fillSettingsForm();
+    state.settingsLoaded = true;
+    setSettingsStatus("配置已从本地存储加载", { includeStorageState: true });
     renderHistory();
     renderQuickPrompts(QUICK_PROMPTS);
     updatePageChip(getSnapshot());
     queueAiTimelineRefresh(true);
     setLoading(false);
+  }
+
+  function shouldAutoSaveSettings() {
+    return state.settingsLoaded && !state.hydratingSettingsForm && !state.pageUnloading;
+  }
+
+  function autoSaveSettings() {
+    if (!shouldAutoSaveSettings()) {
+      return;
+    }
+    setSettingsStatus("正在写入本地存储…");
+    saveSettings({ collapseAfterSave: false }).then((saved) => {
+      if (saved) {
+        setSettingsStatus("本地存储写入成功", { includeStorageState: true });
+      }
+    });
   }
 
   async function saveSettings({ collapseAfterSave = true } = {}) {
@@ -4185,7 +4237,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       trialEnabled: true,
       fallbackToLocal: true,
       trialApiUrl: settingsFormEls.trialApiUrl.value.trim(),
-      apiUrl: settingsFormEls.apiUrl.value.trim(),
+      apiUrl: settingsFormEls.apiUrl.value.trim() || "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
       model: getActiveModel(),
       apiKey: settingsFormEls.apiKey.value.trim(),
       aiTimelineEnabled: Boolean(settingsFormEls.aiTimelineEnabled.checked),
@@ -5138,7 +5190,12 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     openPanel(true);
   });
   saveSettingsEl.addEventListener("click", () => {
-    saveSettings();
+    setSettingsStatus("正在写入本地存储…");
+    saveSettings().then((saved) => {
+      if (saved) {
+        setSettingsStatus("本地存储写入成功", { includeStorageState: true });
+      }
+    });
   });
   addCurrentSiteEl.addEventListener("click", () => {
     addCurrentSite();
@@ -5329,9 +5386,40 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
 
   providerSelectEl.addEventListener("change", (e) => {
     updateProviderUI(e.target.value);
+    autoSaveSettings();
   });
 
-  modelSelectEl.addEventListener("change", handleModelSelectChange);
+  modelSelectEl.addEventListener("change", (e) => {
+    handleModelSelectChange(e);
+    autoSaveSettings();
+  });
+
+  settingsFormEls.apiKey.addEventListener("change", () => {
+    autoSaveSettings();
+  });
+  settingsFormEls.apiKey.addEventListener("blur", () => {
+    autoSaveSettings();
+  });
+  
+  const togglePasswordBtn = root.querySelector(".semrush-coach-toggle-password");
+  if (togglePasswordBtn) {
+    togglePasswordBtn.addEventListener("click", () => {
+      const isMasked = settingsFormEls.apiKey.classList.contains("semrush-coach-masked-input");
+      settingsFormEls.apiKey.classList.toggle("semrush-coach-masked-input", !isMasked);
+      togglePasswordBtn.textContent = isMasked ? "🙈" : "👁️";
+    });
+  }
+
+  settingsFormEls.apiUrl.addEventListener("change", () => autoSaveSettings());
+  settingsFormEls.modelInput.addEventListener("change", () => autoSaveSettings());
+  settingsFormEls.aiTimelineEnabled.addEventListener("change", () => autoSaveSettings());
+
+  window.addEventListener("beforeunload", () => {
+    state.pageUnloading = true;
+  });
+  window.addEventListener("pagehide", () => {
+    state.pageUnloading = true;
+  });
 
   fileInputEl.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
@@ -5572,7 +5660,6 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       closeToolsMenu();
     }
   }
-
   function closeProjectAssessmentModal() {
     if (projectAssessmentModalEl) {
       projectAssessmentModalEl.classList.add("semrush-coach-hidden");
@@ -5742,6 +5829,8 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   updatePageChip(getSnapshot());
   loadSettings().catch(() => {
     fillSettingsForm();
+    state.settingsLoaded = true;
+    setSettingsStatus("配置加载失败，当前显示的是默认值。");
     renderHistory();
     queueAiTimelineRefresh(true);
   });

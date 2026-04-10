@@ -33,7 +33,7 @@ function createInstallId() {
 function hasConfiguredRemoteAccess(settings) {
   return Boolean(
     settings?.remoteEnabled &&
-      ((settings?.trialEnabled && settings?.trialApiUrl) || (settings?.apiUrl && settings?.apiKey))
+      ((settings?.trialEnabled && settings?.trialApiUrl) || settings?.apiKey)
   );
 }
 
@@ -158,22 +158,35 @@ function buildScreenshotFallback(localDraft) {
 }
 
 async function getSettings() {
-  const data = await chrome.storage.local.get(["semrushCoachSettings", "semrushCoachInstallId"]);
+  const data = await chrome.storage.local.get([
+    "semrushCoachSettings",
+    "semrushCoachInstallId",
+    "semrushCoachApiKeyBackup"
+  ]);
+  const storedSettings = data.semrushCoachSettings || {};
+  const backupApiKey = typeof data.semrushCoachApiKeyBackup === "string" ? data.semrushCoachApiKeyBackup : "";
   return {
     ...DEFAULT_SETTINGS,
-    ...(data.semrushCoachSettings || {}),
+    ...storedSettings,
+    apiKey: storedSettings.apiKey || backupApiKey,
     installId: data.semrushCoachInstallId || ""
   };
 }
 
 async function saveSettings(nextSettings) {
+  const current = await getSettings();
   const merged = {
-    ...(await getSettings()),
+    ...current,
     ...nextSettings
   };
 
+  if (current.apiKey && Object.prototype.hasOwnProperty.call(nextSettings, "apiKey") && !nextSettings.apiKey) {
+    merged.apiKey = current.apiKey;
+  }
+
   await chrome.storage.local.set({
-    semrushCoachSettings: merged
+    semrushCoachSettings: merged,
+    semrushCoachApiKeyBackup: merged.apiKey || ""
   });
 
   return merged;
@@ -185,9 +198,18 @@ const LEGACY_API_URLS = [
 ];
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const existing = await chrome.storage.local.get(["semrushCoachSettings", "semrushCoachInstallId"]);
+  const existing = await chrome.storage.local.get([
+    "semrushCoachSettings",
+    "semrushCoachInstallId",
+    "semrushCoachApiKeyBackup"
+  ]);
   const prev = existing.semrushCoachSettings || {};
   const installId = existing.semrushCoachInstallId || createInstallId();
+  const backupApiKey = typeof existing.semrushCoachApiKeyBackup === "string" ? existing.semrushCoachApiKeyBackup : "";
+
+  if (!prev.apiKey && backupApiKey) {
+    prev.apiKey = backupApiKey;
+  }
 
   // 如果旧配置用的是已知不可用的默认 URL 且没有填过 Key，迁移到新默认
   if (!prev.apiUrl || LEGACY_API_URLS.includes(prev.apiUrl)) {
@@ -195,12 +217,15 @@ chrome.runtime.onInstalled.addListener(async () => {
     prev.model = DEFAULT_SETTINGS.model;
   }
 
+  const nextSettings = {
+    ...DEFAULT_SETTINGS,
+    ...prev
+  };
+
   await chrome.storage.local.set({
     semrushCoachInstallId: installId,
-    semrushCoachSettings: {
-      ...DEFAULT_SETTINGS,
-      ...prev
-    }
+    semrushCoachSettings: nextSettings,
+    semrushCoachApiKeyBackup: nextSettings.apiKey || backupApiKey || ""
   });
 });
 
@@ -281,6 +306,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
       }
     })();
+    return true;
+  }
+
+  if (message?.type === "SEMRUSH_COACH_BRD_RESEARCH_DISABLED") {
+    sendResponse({ ok: false, error: "商业调研功能已下线。" });
     return true;
   }
 
