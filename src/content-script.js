@@ -138,7 +138,7 @@
             <button class="semrush-coach-format-markdown" type="button">转 Markdown</button>
             <button class="semrush-coach-attach" type="button">上传图片</button>
             <button class="semrush-coach-extract-ui" type="button">🎨 提取UI规范</button>
-            <button class="semrush-coach-generate-prd" type="button">📄 生成PRD</button>
+            <button class="semrush-coach-generate-prd" type="button">📄 网页转PRD</button>
             <button class="semrush-coach-generate-summary" type="button">🧠 总结+脑图</button>
           </div>
           <button class="semrush-coach-submit" type="submit">提问</button>
@@ -153,6 +153,25 @@
           <button class="semrush-coach-mindmap-modal-close" type="button" aria-label="关闭">×</button>
         </div>
         <div class="semrush-coach-mindmap-modal-body"></div>
+      </div>
+    </section>
+    <section class="semrush-coach-project-assessment-modal semrush-coach-hidden" aria-hidden="true">
+      <div class="semrush-coach-project-assessment-modal-backdrop"></div>
+      <div class="semrush-coach-project-assessment-modal-dialog">
+        <div class="semrush-coach-project-assessment-modal-header">
+          <p class="semrush-coach-project-assessment-modal-title">
+            <span class="semrush-coach-project-assessment-modal-title-prefix">AI</span>
+            &nbsp;智能创建助手 功能需求输入
+          </p>
+          <button class="semrush-coach-project-assessment-modal-close" type="button" aria-label="关闭">×</button>
+        </div>
+        <div class="semrush-coach-project-assessment-modal-body">
+          <textarea class="semrush-coach-project-assessment-input" placeholder="例如：我想做一个专门记录猫咪体重的App…"></textarea>
+        </div>
+        <div class="semrush-coach-project-assessment-modal-footer">
+          <button class="semrush-coach-project-assessment-btn-cancel" type="button">取消</button>
+          <button class="semrush-coach-project-assessment-btn-submit" type="button">确定</button>
+        </div>
       </div>
     </section>
   `;
@@ -175,6 +194,12 @@
   const mindmapModalEl = root.querySelector(".semrush-coach-mindmap-modal");
   const mindmapModalBodyEl = root.querySelector(".semrush-coach-mindmap-modal-body");
   const mindmapModalCloseEl = root.querySelector(".semrush-coach-mindmap-modal-close");
+  const projectAssessmentModalEl = root.querySelector(".semrush-coach-project-assessment-modal");
+  const projectAssessmentCloseEl = root.querySelector(".semrush-coach-project-assessment-modal-close");
+  const projectAssessmentCancelEl = root.querySelector(".semrush-coach-project-assessment-btn-cancel");
+  const projectAssessmentSubmitEl = root.querySelector(".semrush-coach-project-assessment-btn-submit");
+  const projectAssessmentInputEl = root.querySelector(".semrush-coach-project-assessment-input");
+  const projectAssessmentBackdropEl = root.querySelector(".semrush-coach-project-assessment-modal-backdrop");
   let compareModalEl = root.querySelector(".semrush-coach-compare-modal");
   let compareModalCloseEl = root.querySelector(".semrush-coach-compare-modal-close");
   let compareUrlInputEls = Array.from(root.querySelectorAll(".semrush-coach-compare-url"));
@@ -245,7 +270,7 @@
       <button class="semrush-coach-tools-item" type="button" data-tool="selection-analysis">框选分析</button>
       <button class="semrush-coach-tools-item" type="button" data-tool="markdown">转 Markdown</button>
       <button class="semrush-coach-tools-item" type="button" data-tool="extract-ui">提取UI规范</button>
-      <button class="semrush-coach-tools-item" type="button" data-tool="generate-prd">生成PRD</button>
+      <button class="semrush-coach-tools-item" type="button" data-tool="generate-prd">网页转PRD</button>
     </div>
     <section class="semrush-coach-compare-modal semrush-coach-hidden" aria-hidden="true">
       <div class="semrush-coach-compare-modal-backdrop"></div>
@@ -382,6 +407,13 @@
     qrCodeItemEl.setAttribute("data-tool", "page-qr");
     qrCodeItemEl.textContent = "网页二维码";
     toolsMenuEl.insertBefore(qrCodeItemEl, toolsMenuEl.children[3] || null);
+    const projectAssessmentItemEl = document.createElement("button");
+    projectAssessmentItemEl.className = "semrush-coach-tools-item";
+    projectAssessmentItemEl.type = "button";
+    projectAssessmentItemEl.setAttribute("data-tool", "project-assessment");
+    projectAssessmentItemEl.textContent = "项目评估";
+    toolsMenuEl.insertBefore(projectAssessmentItemEl, toolsMenuEl.children[4] || null);
+
   }
   toolsMenuEl?.querySelector('[data-tool="selection-analysis"]')?.remove();
   const toolsMenuItems = Array.from(toolsMenuEl?.querySelectorAll(".semrush-coach-tools-item") || []);
@@ -406,7 +438,33 @@
     </div>
   `;
   root.appendChild(compareReportModalEl);
-  const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-coach-compare-report-modal-body");
+  
+  const assessmentReportModalEl = document.createElement("section");
+  assessmentReportModalEl.className = "semrush-coach-assessment-report-modal semrush-coach-hidden";
+  assessmentReportModalEl.setAttribute("aria-hidden", "true");
+  assessmentReportModalEl.innerHTML = `
+    <div class="semrush-coach-assessment-report-modal-backdrop"></div>
+    <div class="semrush-coach-assessment-report-modal-dialog">
+      <div class="semrush-coach-assessment-report-modal-header">
+        <div>
+          <p class="semrush-coach-card-title semrush-coach-assessment-report-modal-title" style="margin:0;">项目评估报告</p>
+        </div>
+        <div class="semrush-coach-assessment-report-modal-actions">
+          <button class="semrush-coach-assessment-report-export" data-export="word" type="button">导出 Word</button>
+          <button class="semrush-coach-assessment-report-modal-close" type="button" aria-label="关闭">×</button>
+        </div>
+      </div>
+      <div class="semrush-coach-assessment-report-modal-body"></div>
+    </div>
+  `;
+  root.appendChild(assessmentReportModalEl);
+  const assessmentReportModalBodyEl = assessmentReportModalEl.querySelector(".semrush-coach-assessment-report-modal-body");
+  const assessmentReportModalCloseEl = assessmentReportModalEl.querySelector(".semrush-coach-assessment-report-modal-close");
+  const assessmentReportExportButtons = Array.from(assessmentReportModalEl.querySelectorAll(".semrush-coach-assessment-report-export"));
+  let activeAssessmentReportPayload = "";
+  let activeAssessmentReportTitle = "";
+
+const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-coach-compare-report-modal-body");
   const compareReportModalCloseEl = compareReportModalEl.querySelector(".semrush-coach-compare-report-modal-close");
   const compareReportExportButtons = Array.from(compareReportModalEl.querySelectorAll(".semrush-coach-compare-report-export"));
   let activeCompareReportPayload = null;
@@ -426,7 +484,9 @@
     } else if (tool === "extract-ui") {
       item.textContent = "提取UI规范";
     } else if (tool === "generate-prd") {
-      item.textContent = "生成PRD";
+      item.textContent = "网页转PRD";
+    } else if (tool === "project-assessment") {
+      item.textContent = "项目评估";
     }
   });
   
@@ -2229,6 +2289,13 @@
                 <div class="semrush-coach-card-actions">
                   <button class="semrush-coach-copy-btn" data-answer="${encodedAnswer}" title="一键复制">复制</button>
                   <button class="semrush-coach-compare-open-btn" data-report="${encodedComparison}" type="button">全屏查看</button>
+                </div>
+              `
+          : item.renderAsAssessment
+              ? `
+                <div class="semrush-coach-card-actions">
+                  <button class="semrush-coach-copy-btn" data-answer="${encodedAnswer}" title="一键复制">复制</button>
+                  <button class="semrush-coach-assessment-open-btn" data-answer="${encodedAnswer}" data-title="${escapeAttribute(item.pageSummary || "项目评估")}" type="button">全屏查看</button>
                 </div>
               `
               : `<button class="semrush-coach-copy-btn" data-answer="${encodedAnswer}" title="一键复制">复制</button>`;
@@ -5009,9 +5076,28 @@
   });
 
   closeButton.addEventListener("click", closePanel);
+  projectAssessmentCloseEl?.addEventListener("click", closeProjectAssessmentModal);
+  projectAssessmentCancelEl?.addEventListener("click", closeProjectAssessmentModal);
+  projectAssessmentBackdropEl?.addEventListener("click", closeProjectAssessmentModal);
+  projectAssessmentSubmitEl?.addEventListener("click", runProjectAssessment);
   mindmapModalCloseEl?.addEventListener("click", closeMindmapModal);
   compareModalCloseEl?.addEventListener("click", closeCompareModal);
   compareReportModalCloseEl?.addEventListener("click", closeCompareReportModal);
+  assessmentReportModalCloseEl?.addEventListener("click", closeAssessmentReportModal);
+  assessmentReportModalEl?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.classList.contains("semrush-coach-assessment-report-modal-backdrop")) {
+      closeAssessmentReportModal();
+    }
+  });
+  assessmentReportExportButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!activeAssessmentReportPayload) return;
+      if (button.getAttribute("data-export") === "word") {
+        exportAssessmentReportAsWord(activeAssessmentReportPayload, activeAssessmentReportTitle);
+      }
+    });
+  });
   compareReportExportButtons.forEach((button) => {
     button.addEventListener("click", () => {
       if (!activeCompareReportPayload) {
@@ -5102,6 +5188,8 @@
       extractUISpec();
     } else if (tool === "generate-prd") {
       generatePRD();
+    } else if (tool === "project-assessment") {
+      openProjectAssessmentModal();
     }
   });
 
@@ -5338,6 +5426,11 @@
       openCompareReportModal(compareOpenBtn.getAttribute("data-report") || "");
       return;
     }
+    const assessmentOpenBtn = target.closest(".semrush-coach-assessment-open-btn");
+    if (assessmentOpenBtn) {
+      openAssessmentReportModal(assessmentOpenBtn.getAttribute("data-answer") || "", assessmentOpenBtn.getAttribute("data-title") || "");
+      return;
+    }
 
     const qrActionBtn = target.closest(".semrush-coach-qr-action");
     if (qrActionBtn instanceof HTMLElement) {
@@ -5464,10 +5557,184 @@
           error: error instanceof Error ? error.message : "无法采集当前页内容"
         });
       }
-    })();
+    
+})();
 
     return true;
   });
+
+  function openProjectAssessmentModal() {
+    if (projectAssessmentModalEl) {
+      projectAssessmentModalEl.classList.remove("semrush-coach-hidden");
+      projectAssessmentModalEl.setAttribute("aria-hidden", "false");
+      projectAssessmentInputEl.value = "";
+      setTimeout(() => projectAssessmentInputEl.focus(), 100);
+      closeToolsMenu();
+    }
+  }
+
+  function closeProjectAssessmentModal() {
+    if (projectAssessmentModalEl) {
+      projectAssessmentModalEl.classList.add("semrush-coach-hidden");
+      projectAssessmentModalEl.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  async function runProjectAssessment() {
+    const requirement = projectAssessmentInputEl.value;
+    if (!requirement || !requirement.trim()) {
+      projectAssessmentInputEl.focus();
+      return;
+    }
+    
+    closeProjectAssessmentModal();
+
+    if (!hasConfiguredRemoteAccess()) {
+      state.history.push({
+        role: "assistant",
+        pageSummary: "提示",
+        answer: "使用项目评估功能需要配置你自己的 API Key。",
+        suggestedNextSteps: ["点击「体验 / API 设置」"],
+        confidence: 0.9,
+        elementHints: []
+      });
+      renderHistory();
+      openPanel(true);
+      return;
+    }
+
+    setLoading(true);
+    openPanel(true);
+
+    state.history.push({
+      role: "user",
+      text: "项目评估：\n" + requirement.trim()
+    });
+    renderHistory();
+    scrollHistoryToBottom();
+
+    const progressSteps = [
+      "⏳ 正在分析需求逻辑与技术可行性...",
+      "🧠 正在推演业务闭环...",
+      "📄 正在生成功能清单..."
+    ];
+    const progressCard = createProgressCard({
+      title: "需求评估中",
+      steps: progressSteps,
+      initialPercent: 5,
+      eyebrow: "项目评估"
+    });
+
+    progressCard.update(1, 40);
+
+    let progressTimer;
+    try {
+      progressTimer = window.setInterval(() => {
+        const progressBar = progressCard.card.querySelector(".semrush-coach-progress-bar");
+        if (progressBar) {
+          const cur = parseFloat(progressBar.style.width) || 40;
+          if (cur < 98) progressBar.style.width = (cur + 0.8) + "%";
+        }
+      }, 500);
+
+      const response = await chrome.runtime.sendMessage({
+        type: "SEMRUSH_COACH_PROJECT_ASSESSMENT",
+        payload: { requirement: requirement.trim() }
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || "AI 服务异常");
+      }
+
+      progressCard.update(3, 100);
+      await wait(400);
+
+      state.history.push({
+        role: "assistant",
+        pageSummary: response.data.pageSummary || "项目评估方案",
+        renderAsAssessment: true,
+        answer: response.data.answer || "评估已完成。",
+        suggestedNextSteps: response.data.suggestedNextSteps || ["如果你想了解某一块的更多细节，可以继续问我。"],
+        confidence: response.data.confidence || 0.9,
+        elementHints: [],
+        usageMeta: response.meta?.usageMeta || response.data?.usageMeta
+      });
+
+    } catch (error) {
+      state.history.push({
+        role: "assistant",
+        pageSummary: "评估失败",
+        answer: "抱歉，生成评估报告时出现问题：\n" + (error instanceof Error ? error.message : "未知错误"),
+        suggestedNextSteps: ["请稍后再试"],
+        confidence: 0,
+        elementHints: []
+      });
+    } finally {
+      window.clearInterval(progressTimer);
+      if (progressCard.card.parentNode) {
+        progressCard.card.remove();
+      }
+      setLoading(false);
+      renderHistory();
+      scrollHistoryToBottom();
+    }
+  }
+
+
+  function openAssessmentReportModal(markdown, title) {
+    if (!assessmentReportModalEl || !assessmentReportModalBodyEl) return;
+    activeAssessmentReportPayload = markdown;
+    activeAssessmentReportTitle = title;
+    assessmentReportModalEl.querySelector(".semrush-coach-assessment-report-modal-title").textContent = title || "项目评估报告";
+    assessmentReportModalBodyEl.innerHTML = renderMarkdownContent(markdown);
+    assessmentReportModalBodyEl.scrollTop = 0;
+    assessmentReportModalEl.classList.remove("semrush-coach-hidden");
+    assessmentReportModalEl.setAttribute("aria-hidden", "false");
+  }
+
+  function closeAssessmentReportModal() {
+    if (!assessmentReportModalEl) return;
+    assessmentReportModalEl.classList.add("semrush-coach-hidden");
+    assessmentReportModalEl.setAttribute("aria-hidden", "true");
+  }
+
+  function exportAssessmentReportAsWord(markdown, title) {
+    const htmlContent = renderMarkdownContent(markdown);
+    const docHtml = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <meta charset="utf-8">
+          <title>${escapeHtml(title)}</title>
+          <style>
+            body { font-family: "Microsoft YaHei", sans-serif; font-size: 11pt; color: #333; line-height: 1.5; }
+            h1, h2, h3, h4 { color: #000; font-family: "Microsoft YaHei", sans-serif; }
+            h1 { font-size: 16pt; margin-bottom: 12pt; border-bottom: 2px solid #000; padding-bottom: 4px; }
+            h2 { font-size: 14pt; margin-top: 18pt; margin-bottom: 8pt; color: #17211d; }
+            h3 { font-size: 12pt; margin-top: 14pt; margin-bottom: 6pt; }
+            p { margin: 0 0 10pt 0; }
+            ul, ol { margin: 0 0 10pt 0; padding-left: 20pt; }
+            li { margin-bottom: 4pt; }
+            table { border-collapse: collapse; width: 100%; margin-bottom: 14pt; }
+            th, td { border: 1px solid #777; padding: 6pt 8pt; text-align: left; }
+            th { background-color: #f0f0f0; font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <h1>${escapeHtml(title)}</h1>
+          ${htmlContent}
+        </body>
+      </html>
+    `;
+    const blob = new Blob([docHtml], { type: "application/msword;charset=utf-8" });
+    const filename = `${title || "项目评估报告"}_${new Date().toISOString().slice(0, 10)}.doc`;
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+  }
 
   renderHistory();
   renderAttachment();
@@ -5478,4 +5745,5 @@
     renderHistory();
     queueAiTimelineRefresh(true);
   });
+
 })();

@@ -1,5 +1,5 @@
 import { generateGuidance } from "./core/guidance-engine.js";
-import { getDefaultRemoteSettings, generateRemoteGuidance, testRemoteConnection, generateUISpecAnalysis, generatePRDAnalysis, generatePageSummaryAnalysis, generatePageDiffAnalysis, getTrialStatus } from "./core/remote-client.js";
+import { getDefaultRemoteSettings, generateRemoteGuidance, testRemoteConnection, generateUISpecAnalysis, generatePRDAnalysis, generatePageSummaryAnalysis, generatePageDiffAnalysis, getTrialStatus, generateProjectAssessmentAnalysis } from "./core/remote-client.js";
 import { buildRedactionSummary, redactArray, redactText } from "./core/redaction.js";
 
 const DEFAULT_ALLOWED_HOSTS = [
@@ -278,6 +278,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true, data: prdData });
       } catch (error) {
         console.error("[AI Coach] PRD 文档生成失败:", error);
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.type === "SEMRUSH_COACH_PROJECT_ASSESSMENT") {
+    (async () => {
+      try {
+        const settings = await getSettings();
+        if (!hasConfiguredRemoteAccess(settings)) {
+          sendResponse({ ok: false, error: "请先配置体验服务地址，或填写你自己的 API Key。" });
+          return;
+        }
+        const payload = message.payload;
+        console.log("[AI Coach] 开始项目评估...");
+        const assessmentData = await generateProjectAssessmentAnalysis({ payload, settings });
+        console.log("[AI Coach] 项目评估完成");
+        sendResponse({ ok: true, data: assessmentData });
+      } catch (error) {
+        console.error("[AI Coach] 项目评估失败:", error);
         sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
       }
     })();
