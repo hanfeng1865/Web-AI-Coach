@@ -11,7 +11,10 @@
     "sem.3ue.co",
     "*.3ue.co",
     "polymarket.com",
-    "*.polymarket.com"
+    "*.polymarket.com",
+    "chatgpt.com",
+    "chat.openai.com",
+    "gemini.google.com"
   ];
 
   const DEFAULT_SETTINGS = {
@@ -23,6 +26,7 @@
     model: "qwen-vl-max",
     apiKey: "",
     fallbackToLocal: true,
+    aiTimelineEnabled: true,
     allowedHosts: DEFAULT_ALLOWED_HOSTS
   };
 
@@ -46,6 +50,12 @@
     toolsMenuOpen: false,
     attachment: null,
     siteEnabled: true,
+    aiTimeline: {
+      signature: "",
+      items: [],
+      hoverIndex: -1,
+      refreshQueued: false
+    },
     selectionActive: false,
     selectionCleanup: null,
     focusMode: {
@@ -105,6 +115,10 @@
             <span>启用网站列表（每行一个域名）</span>
             <textarea class="semrush-coach-setting-hosts" rows="5" placeholder="semrush.com&#10;polymarket.com&#10;*.example.com"></textarea>
           </label>
+          <label class="semrush-coach-setting-full semrush-coach-setting-checkbox">
+            <input class="semrush-coach-setting-ai-timeline" type="checkbox" checked />
+            <span>AI 对话页时间轴（ChatGPT / Gemini）</span>
+          </label>
         </div>
         <div class="semrush-coach-settings-actions">
           <button class="semrush-coach-settings-save" type="button">保存</button>
@@ -143,8 +157,21 @@
     </section>
   `;
 
+  const aiTimelineEl = document.createElement("aside");
+  aiTimelineEl.className = "semrush-coach-ai-timeline semrush-coach-hidden";
+  aiTimelineEl.innerHTML = `
+    <div class="semrush-coach-ai-timeline-body">
+      <div class="semrush-coach-ai-timeline-line"></div>
+      <div class="semrush-coach-ai-timeline-items"></div>
+    </div>
+    <div class="semrush-coach-ai-timeline-preview semrush-coach-hidden"></div>
+  `;
+  document.body.appendChild(aiTimelineEl);
+
   const bubble = root.querySelector(".semrush-coach-bubble");
   const panel = root.querySelector(".semrush-coach-panel");
+  const aiTimelineItemsEl = aiTimelineEl.querySelector(".semrush-coach-ai-timeline-items");
+  const aiTimelinePreviewEl = aiTimelineEl.querySelector(".semrush-coach-ai-timeline-preview");
   const mindmapModalEl = root.querySelector(".semrush-coach-mindmap-modal");
   const mindmapModalBodyEl = root.querySelector(".semrush-coach-mindmap-modal-body");
   const mindmapModalCloseEl = root.querySelector(".semrush-coach-mindmap-modal-close");
@@ -411,7 +438,8 @@
     apiUrl: root.querySelector(".semrush-coach-setting-api-url"),
     modelInput: root.querySelector(".semrush-coach-setting-model-input"),
     apiKey: root.querySelector(".semrush-coach-setting-api-key"),
-    allowedHosts: root.querySelector(".semrush-coach-setting-hosts")
+    allowedHosts: root.querySelector(".semrush-coach-setting-hosts"),
+    aiTimelineEnabled: root.querySelector(".semrush-coach-setting-ai-timeline")
   };
 
   const PROVIDERS = {
@@ -430,6 +458,25 @@
       models: ["doubao-1.5-vision-pro-32k", "doubao-vision-pro-32k", "ep-"]
     }
   };
+
+  const AI_TIMELINE_SITE_CONFIG = [
+    {
+      id: "chatgpt",
+      hosts: ["chatgpt.com", "chat.openai.com"],
+      messageSelectors: ['div[data-message-author-role="user"]', '[data-testid^="conversation-turn-"] [data-message-author-role="user"]']
+    },
+    {
+      id: "gemini",
+      hosts: ["gemini.google.com"],
+      messageSelectors: [
+        "user-query",
+        ".user-query",
+        ".user-query-container .user-query-container .user-query-container",
+        "[data-test-id='user-query']",
+        "[data-testid='user-query']"
+      ]
+    }
+  ];
 
   function escapeHtml(text) {
     return String(text || "")
@@ -450,6 +497,228 @@
   function parseAllowedHosts(value) {
     const raw = Array.isArray(value) ? value : String(value || "").split(/\r?\n/);
     return [...new Set(raw.map(normalizeHostPattern).filter(Boolean))];
+  }
+
+  function getAiTimelineSiteConfig() {
+    const hostname = getCurrentHostname();
+    return (
+      AI_TIMELINE_SITE_CONFIG.find((site) =>
+        site.hosts.some((host) => hostname === host || hostname.endsWith(`.${host}`))
+      ) || null
+    );
+  }
+
+  function truncateTimelinePreview(text, maxLength = 120) {
+    const normalized = String(text || "").replace(/\s+/g, " ").trim();
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+    return `${normalized.slice(0, maxLength - 1).trim()}…`;
+  }
+
+  function normalizeTimelineText(text) {
+    return String(text || "")
+      .replace(/\s+/g, " ")
+      .replace(/^(你说|你问|你提问了|you said|you asked)\s*[:：]?\s*/i, "")
+      .trim();
+  }
+
+  function extractTimelineNodeText(node) {
+    if (!(node instanceof HTMLElement)) {
+      return "";
+    }
+
+    const preferredSelectors = [
+      ".query-text",
+      ".query-text-line",
+      ".user-query-bubble-with-background",
+      ".whitespace-pre-wrap",
+      "[dir='auto']"
+    ];
+
+    for (const selector of preferredSelectors) {
+      const match = node.querySelector(selector);
+      const text = normalizeTimelineText(String(match?.innerText || match?.textContent || ""));
+      if (text) {
+        return text;
+      }
+    }
+
+    return normalizeTimelineText(String(node.innerText || node.textContent || ""));
+  }
+
+  function collectAiTimelineItems() {
+    const siteConfig = getAiTimelineSiteConfig();
+    if (!siteConfig) {
+      return [];
+    }
+
+    const nodes = Array.from(
+      document.querySelectorAll(siteConfig.messageSelectors.join(","))
+    ).filter((node) => node instanceof HTMLElement);
+
+    const candidates = nodes
+      .map((node) => {
+        const element = node instanceof HTMLElement ? node : null;
+        if (!element || !element.isConnected) {
+          return null;
+        }
+
+        const rect = element.getBoundingClientRect();
+        if (rect.width < 120 || rect.height < 24) {
+          return null;
+        }
+
+        const text = extractTimelineNodeText(element);
+        if (!text) {
+          return null;
+        }
+
+        const top = Math.round(rect.top + window.scrollY);
+
+        return {
+          element,
+          text,
+          preview: truncateTimelinePreview(text),
+          top,
+          height: Math.round(rect.height)
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.top - b.top);
+
+    const items = [];
+    for (const candidate of candidates) {
+      const previous = items[items.length - 1];
+      if (
+        previous &&
+        previous.text === candidate.text &&
+        Math.abs(previous.top - candidate.top) <= Math.max(48, Math.max(previous.height, candidate.height))
+      ) {
+        continue;
+      }
+      items.push(candidate);
+    }
+
+    return items;
+  }
+
+  function hideAiTimelinePreview() {
+    if (!(aiTimelinePreviewEl instanceof HTMLElement)) {
+      return;
+    }
+    aiTimelinePreviewEl.classList.add("semrush-coach-hidden");
+    aiTimelinePreviewEl.textContent = "";
+  }
+
+  function showAiTimelinePreview(text, anchorEl = null) {
+    if (!(aiTimelinePreviewEl instanceof HTMLElement) || !text) {
+      return;
+    }
+    aiTimelinePreviewEl.textContent = text;
+    if (anchorEl instanceof HTMLElement && aiTimelineEl instanceof HTMLElement) {
+      const timelineRect = aiTimelineEl.getBoundingClientRect();
+      const anchorRect = anchorEl.getBoundingClientRect();
+      const offsetTop = Math.max(8, Math.min(timelineRect.height - 120, anchorRect.top - timelineRect.top - 40));
+      aiTimelinePreviewEl.style.top = `${offsetTop}px`;
+    } else {
+      aiTimelinePreviewEl.style.top = "8px";
+    }
+    aiTimelinePreviewEl.classList.remove("semrush-coach-hidden");
+  }
+
+  function updateAiTimelineActiveState() {
+    if (!(aiTimelineItemsEl instanceof HTMLElement)) {
+      return;
+    }
+
+    const items = state.aiTimeline.items || [];
+    if (!items.length) {
+      return;
+    }
+
+    const viewportAnchor = window.innerHeight * 0.35;
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    items.forEach((item, index) => {
+      const rect = item.element?.getBoundingClientRect?.();
+      if (!rect) {
+        return;
+      }
+      const center = rect.top + rect.height / 2;
+      const distance = Math.abs(center - viewportAnchor);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    });
+
+    aiTimelineItemsEl.querySelectorAll(".semrush-coach-ai-timeline-dot").forEach((dot, index) => {
+      dot.classList.toggle("is-active", index === bestIndex);
+    });
+  }
+
+  function renderAiConversationTimeline(force = false) {
+    const shouldShow = Boolean(
+      state.settings.aiTimelineEnabled &&
+        getAiTimelineSiteConfig() &&
+        !state.open
+    );
+
+    if (!(aiTimelineEl instanceof HTMLElement) || !(aiTimelineItemsEl instanceof HTMLElement)) {
+      return;
+    }
+
+    if (!shouldShow) {
+      aiTimelineEl.classList.add("semrush-coach-hidden");
+      hideAiTimelinePreview();
+      state.aiTimeline.signature = "";
+      state.aiTimeline.items = [];
+      return;
+    }
+
+    const items = collectAiTimelineItems();
+    const signature = items.map((item) => `${item.top}:${item.text.slice(0, 60)}`).join("|");
+
+    if (!force && signature === state.aiTimeline.signature) {
+      aiTimelineEl.classList.toggle("semrush-coach-hidden", !items.length);
+      updateAiTimelineActiveState();
+      return;
+    }
+
+    state.aiTimeline.signature = signature;
+    state.aiTimeline.items = items;
+    aiTimelineEl.classList.toggle("semrush-coach-hidden", !items.length);
+    hideAiTimelinePreview();
+
+    aiTimelineItemsEl.innerHTML = items
+      .map((item, index) => {
+        const topPercent = items.length <= 1 ? 0 : (index / (items.length - 1)) * 100;
+        return `
+          <button
+            class="semrush-coach-ai-timeline-dot"
+            type="button"
+            style="top:${topPercent}%;"
+            data-index="${index}"
+            aria-label="跳转到第 ${index + 1} 次提问"
+          ></button>
+        `;
+      })
+      .join("");
+
+    updateAiTimelineActiveState();
+  }
+
+  function queueAiTimelineRefresh(force = false) {
+    if (state.aiTimeline.refreshQueued) {
+      return;
+    }
+    state.aiTimeline.refreshQueued = true;
+    window.requestAnimationFrame(() => {
+      state.aiTimeline.refreshQueued = false;
+      renderAiConversationTimeline(force);
+    });
   }
 
   function hostMatchesPattern(hostname, pattern) {
@@ -1705,6 +1974,7 @@
     panel.classList.remove("semrush-coach-hidden");
     panel.classList.toggle("semrush-coach-panel-expanded", expanded);
     bubble.classList.add("semrush-coach-bubble-active");
+    queueAiTimelineRefresh(true);
   }
 
   function closePanel() {
@@ -1712,6 +1982,7 @@
     closeToolsMenu();
     panel.classList.add("semrush-coach-hidden");
     bubble.classList.remove("semrush-coach-bubble-active");
+    queueAiTimelineRefresh(true);
     if (state.selectionActive) {
       cleanupFocusSelection();
     }
@@ -1722,6 +1993,7 @@
     settingsPanelEl.classList.toggle("semrush-coach-hidden", !open);
     panel.classList.toggle("semrush-coach-settings-view", open);
     settingsToggleEl.classList.toggle("semrush-coach-settings-toggle-active", open);
+    queueAiTimelineRefresh(true);
   }
 
   function closeToolsMenu() {
@@ -1750,6 +2022,7 @@
     settingsFormEls.apiUrl.value = defaultUrl;
     settingsFormEls.apiKey.value = state.settings.apiKey || "";
     settingsFormEls.allowedHosts.value = parseAllowedHosts(state.settings.allowedHosts).join("\n");
+    settingsFormEls.aiTimelineEnabled.checked = state.settings.aiTimelineEnabled !== false;
     settingsStatusEl.textContent = formatTrialStatus(state.settings);
     
     // 匹配 Provider
@@ -3834,6 +4107,7 @@
     renderHistory();
     renderQuickPrompts(QUICK_PROMPTS);
     updatePageChip(getSnapshot());
+    queueAiTimelineRefresh(true);
     setLoading(false);
   }
 
@@ -3847,6 +4121,7 @@
       apiUrl: settingsFormEls.apiUrl.value.trim(),
       model: getActiveModel(),
       apiKey: settingsFormEls.apiKey.value.trim(),
+      aiTimelineEnabled: Boolean(settingsFormEls.aiTimelineEnabled.checked),
       allowedHosts: parseAllowedHosts(settingsFormEls.allowedHosts.value)
     };
 
@@ -3867,6 +4142,7 @@
     renderQuickPrompts(QUICK_PROMPTS);
     updatePageChip(getSnapshot());
     setModeLabel(state.settings.remoteEnabled ? "remote" : "local");
+    queueAiTimelineRefresh(true);
     settingsStatusEl.textContent = state.siteEnabled
       ? formatTrialStatus(state.settings)
       : "已保存，但当前网站还没被启用。";
@@ -4829,6 +5105,79 @@
     }
   });
 
+  aiTimelineEl?.addEventListener("mouseover", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const dot = target.closest(".semrush-coach-ai-timeline-dot");
+    if (!(dot instanceof HTMLElement)) {
+      return;
+    }
+
+    const index = Number(dot.getAttribute("data-index"));
+    const item = state.aiTimeline.items[index];
+    if (item?.preview) {
+      showAiTimelinePreview(item.preview, dot);
+    }
+  });
+
+  aiTimelineEl?.addEventListener("mouseout", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.closest(".semrush-coach-ai-timeline-dot")) {
+      return;
+    }
+    hideAiTimelinePreview();
+  });
+
+  aiTimelineEl?.addEventListener("focusin", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const dot = target.closest(".semrush-coach-ai-timeline-dot");
+    if (!(dot instanceof HTMLElement)) {
+      return;
+    }
+
+    const index = Number(dot.getAttribute("data-index"));
+    const item = state.aiTimeline.items[index];
+    if (item?.preview) {
+      showAiTimelinePreview(item.preview, dot);
+    }
+  });
+
+  aiTimelineEl?.addEventListener("focusout", hideAiTimelinePreview);
+
+  aiTimelineEl?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const dot = target.closest(".semrush-coach-ai-timeline-dot");
+    if (!(dot instanceof HTMLElement)) {
+      return;
+    }
+
+    const index = Number(dot.getAttribute("data-index"));
+    const item = state.aiTimeline.items[index];
+    if (item?.element instanceof HTMLElement) {
+      item.element.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      updateAiTimelineActiveState();
+    }
+  });
+
+  window.addEventListener("scroll", () => {
+    updateAiTimelineActiveState();
+  }, { passive: true });
+
+  window.addEventListener("resize", () => {
+    queueAiTimelineRefresh(true);
+  });
+
   const extractUIBtn = root.querySelector(".semrush-coach-extract-ui");
   if (extractUIBtn) {
     extractUIBtn.addEventListener("click", () => {
@@ -5083,10 +5432,14 @@
       state.lastUrl = window.location.href;
       const snapshot = getSnapshot();
       updatePageChip(snapshot);
+      queueAiTimelineRefresh(true);
       if (!state.history.length) {
         renderHistory();
       }
+      return;
     }
+
+    queueAiTimelineRefresh();
   }, 1200);
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -5123,5 +5476,6 @@
   loadSettings().catch(() => {
     fillSettingsForm();
     renderHistory();
+    queueAiTimelineRefresh(true);
   });
 })();

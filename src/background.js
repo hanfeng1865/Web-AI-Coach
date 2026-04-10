@@ -9,12 +9,16 @@ const DEFAULT_ALLOWED_HOSTS = [
   "sem.3ue.co",
   "*.3ue.co",
   "polymarket.com",
-  "*.polymarket.com"
+  "*.polymarket.com",
+  "chatgpt.com",
+  "chat.openai.com",
+  "gemini.google.com"
 ];
 
 const DEFAULT_SETTINGS = {
   locale: "zh-CN",
   allowedHosts: DEFAULT_ALLOWED_HOSTS,
+  aiTimelineEnabled: true,
   ...getDefaultRemoteSettings()
 };
 

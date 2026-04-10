@@ -101,6 +101,90 @@
   display: none !important;
 }
 
+.semrush-coach-ai-timeline {
+  position: fixed;
+  top: 96px;
+  right: 18px;
+  bottom: 132px;
+  z-index: 2147482900;
+  width: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: stretch;
+  pointer-events: none;
+}
+
+.semrush-coach-ai-timeline-body {
+  position: relative;
+  flex: 1;
+  align-self: stretch;
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+}
+
+.semrush-coach-ai-timeline-line {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 50%;
+  width: 4px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.46);
+  box-shadow: inset 0 0 0 1px rgba(32, 49, 44, 0.06);
+}
+
+.semrush-coach-ai-timeline-items {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.semrush-coach-ai-timeline-dot {
+  position: absolute;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  border-radius: 999px;
+  background: rgba(115, 125, 122, 0.9);
+  box-shadow: 0 8px 20px rgba(18, 31, 28, 0.16);
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.semrush-coach-ai-timeline-dot:hover,
+.semrush-coach-ai-timeline-dot:focus-visible,
+.semrush-coach-ai-timeline-dot.is-active {
+  background: #0b7665;
+  box-shadow: 0 10px 26px rgba(11, 118, 101, 0.3);
+  transform: translate(-50%, -50%) scale(1.12);
+  outline: none;
+}
+
+.semrush-coach-ai-timeline-preview {
+  position: absolute;
+  top: 8px;
+  right: 64px;
+  width: min(280px, calc(100vw - 120px));
+  max-height: 220px;
+  overflow: auto;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 38px rgba(18, 31, 28, 0.16);
+  color: var(--semrush-coach-text);
+  font-size: 13px;
+  line-height: 1.65;
+  text-align: left;
+  pointer-events: none;
+}
+
 .semrush-coach-header {
   display: flex;
   align-items: flex-start;
@@ -209,6 +293,17 @@
 
 .semrush-coach-setting-full {
   grid-column: 1 / -1;
+}
+
+.semrush-coach-setting-checkbox {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px !important;
+  color: var(--semrush-coach-text);
+}
+
+.semrush-coach-setting-checkbox input[type="checkbox"] {
+  flex: 0 0 auto;
 }
 
 .semrush-coach-admin-only {
@@ -1650,6 +1745,10 @@
 }
 
 @media (max-width: 720px) {
+  .semrush-coach-ai-timeline {
+    display: none !important;
+  }
+
   .semrush-coach-root {
     right: 12px;
     bottom: 84px;
