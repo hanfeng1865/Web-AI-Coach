@@ -255,6 +255,7 @@
 .semrush-coach-settings-save,
 .semrush-coach-settings-test,
 .semrush-coach-settings-add-site,
+.semrush-coach-selection-capture,
 .semrush-coach-paste-text,
 .semrush-coach-format-markdown,
 .semrush-coach-attach,
@@ -285,6 +286,7 @@
 
 .semrush-coach-settings-test,
 .semrush-coach-settings-add-site,
+.semrush-coach-selection-capture,
 .semrush-coach-paste-text,
 .semrush-coach-format-markdown,
 .semrush-coach-focus-mode,
@@ -301,6 +303,7 @@
 .semrush-coach-settings-save:hover,
 .semrush-coach-settings-test:hover,
 .semrush-coach-settings-add-site:hover,
+.semrush-coach-selection-capture:hover,
 .semrush-coach-paste-text:hover,
 .semrush-coach-format-markdown:hover,
 .semrush-coach-focus-mode:hover,
@@ -321,6 +324,37 @@
   color: var(--semrush-coach-text-soft);
   font-size: 12px;
   line-height: 1.7;
+}
+
+.semrush-coach-file-input {
+  display: none !important;
+  visibility: hidden !important;
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.semrush-coach-selection-capture {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.semrush-coach-selection-capture svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
 }
 
 .semrush-coach-history {
@@ -350,6 +384,7 @@
 .semrush-coach-message {
   border-radius: 8px;
   padding: 20px;
+  text-align: left;
 }
 
 .semrush-coach-welcome-card {
@@ -505,6 +540,7 @@
   font-size: 14px;
   font-weight: 500;
   line-height: 1.9;
+  text-align: left;
 }
 
 .semrush-coach-rich-heading {
@@ -512,6 +548,7 @@
   color: var(--semrush-coach-text);
   line-height: 1.4;
   letter-spacing: -0.02em;
+  text-align: left;
 }
 
 .semrush-coach-rich-heading-1 {
@@ -1388,6 +1425,35 @@
 .semrush-coach-compare-helper.is-error {
   background: rgba(176, 40, 40, 0.08);
   color: #a03434;
+}
+
+.semrush-coach-floating-notice {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 2147483647;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: rgba(17, 28, 24, 0.92);
+  color: #f5f8f6;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  box-shadow: 0 18px 36px rgba(17, 28, 24, 0.24);
+  transform: translateY(10px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.semrush-coach-floating-notice.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.semrush-coach-floating-notice.is-error {
+  background: rgba(138, 34, 34, 0.94);
 }
 
 .semrush-coach-compare-actions {

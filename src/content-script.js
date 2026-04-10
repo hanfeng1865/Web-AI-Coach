@@ -182,6 +182,22 @@
   const attachButtonEl = root.querySelector(".semrush-coach-attach");
   const generateSummaryButtonEl = root.querySelector(".semrush-coach-generate-summary");
   const formToolsEl = root.querySelector(".semrush-coach-form-tools");
+  const selectionCaptureButtonEl = document.createElement("button");
+  selectionCaptureButtonEl.className = "semrush-coach-selection-capture";
+  selectionCaptureButtonEl.type = "button";
+  selectionCaptureButtonEl.setAttribute("aria-label", "框选截图");
+  selectionCaptureButtonEl.setAttribute("title", "框选截图");
+  selectionCaptureButtonEl.innerHTML = `
+    <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+      <path d="M22 10H17c-3.866 0-7 3.134-7 7v5" />
+      <path d="M42 10h5c3.866 0 7 3.134 7 7v5" />
+      <path d="M54 42v5c0 3.866-3.134 7-7 7h-5" />
+      <path d="M22 54h-5c-3.866 0-7-3.134-7-7v-5" />
+      <path d="M32 22v20" />
+      <path d="M22 32h20" />
+    </svg>
+  `;
+  formToolsEl?.insertBefore(selectionCaptureButtonEl, pasteTextButtonEl || null);
   const focusModeButtonEl = document.createElement("button");
   focusModeButtonEl.className = "semrush-coach-focus-mode";
   focusModeButtonEl.type = "button";
@@ -333,6 +349,7 @@
     longScreenshotItemEl.textContent = "网页长截图";
     toolsMenuEl.insertBefore(longScreenshotItemEl, toolsMenuEl.children[2] || null);
   }
+  toolsMenuEl?.querySelector('[data-tool="selection-analysis"]')?.remove();
   const toolsMenuItems = Array.from(toolsMenuEl?.querySelectorAll(".semrush-coach-tools-item") || []);
   const compareReportModalEl = document.createElement("section");
   compareReportModalEl.className = "semrush-coach-compare-report-modal semrush-coach-hidden";
@@ -599,26 +616,12 @@
   }
 
   function renderInlineMarkdown(text) {
-    const placeholders = [];
-    const stash = (value) => {
-      const token = `__SEMCOACH_INLINE_${placeholders.length}__`;
-      placeholders.push(value);
-      return token;
-    };
-
-    let html = escapeHtml(String(text || ""));
-    html = html.replace(/`([^`]+)`/g, (_, code) => stash(`<code>${escapeHtml(code)}</code>`));
-    html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
-    html = html.replace(/__(.+?)__/g, "<strong>$1</strong>");
-    html = html.replace(/_([^_]+)_/g, "<em>$1</em>");
-    html = html.replace(/\n/g, "<br />");
-
-    placeholders.forEach((value, index) => {
-      html = html.replace(`__SEMCOACH_INLINE_${index}__`, value);
-    });
-    return html;
+    const cleaned = String(text || "")
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1")
+      .replace(/(```|`|\*\*|__|\*|~~|_)/g, "")
+      .replace(/\n+/g, " ")
+      .trim();
+    return escapeHtml(cleaned);
   }
 
   function renderMarkdownTable(lines) {
@@ -627,7 +630,7 @@
       .filter(Boolean)
       .map((line) => line.replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim()));
 
-    if (rows.length < 2) {
+    if (!rows.length) {
       return "";
     }
 
@@ -686,7 +689,10 @@
         }
         if (
           tableLines.length >= 2 &&
-          /^\|?[\s:-|]+\|?\s*$/.test(tableLines[1].trim())
+          (
+            /^\|?[\s:-|]+\|?\s*$/.test(tableLines[1].trim()) ||
+            tableLines.every((entry) => entry.replace(/^\||\|$/g, "").split("|").length >= 2)
+          )
         ) {
           html.push(renderMarkdownTable(tableLines));
           index = probe;
@@ -2505,14 +2511,96 @@
     }
 
     const rawDataUrl = await readFileAsDataUrl(file);
+    await setAttachmentFromDataUrl(rawDataUrl, file.name || "image");
+  }
+
+  async function setAttachmentFromDataUrl(rawDataUrl, name = "截图") {
     const dataUrl = await compressImage(rawDataUrl);
     state.attachment = {
       dataUrl,
       mimeType: "image/jpeg",
-      name: file.name || "image"
+      name
     };
     renderAttachment();
     openPanel(true);
+  }
+
+  async function captureSelectionAttachment(selectionRect, outputMimeType = "image/png") {
+    const captureRes = await chrome.runtime.sendMessage({ type: "SEMRUSH_COACH_CAPTURE_TAB" });
+    if (!captureRes?.ok || !captureRes.dataUrl) {
+      throw new Error(captureRes?.error || "框选截图失败，请重试");
+    }
+
+    const img = await loadImageFromDataUrl(captureRes.dataUrl);
+    const viewportWidth = Math.max(window.innerWidth || 1, 1);
+    const viewportHeight = Math.max(window.innerHeight || 1, 1);
+    const sourceWidth = img.naturalWidth || img.width || viewportWidth;
+    const sourceHeight = img.naturalHeight || img.height || viewportHeight;
+    const scaleX = sourceWidth / viewportWidth;
+    const scaleY = sourceHeight / viewportHeight;
+    const left = Math.max(0, Math.round(selectionRect.left * scaleX));
+    const top = Math.max(0, Math.round(selectionRect.top * scaleY));
+    const width = Math.max(1, Math.min(sourceWidth - left, Math.round(selectionRect.width * scaleX)));
+    const height = Math.max(1, Math.min(sourceHeight - top, Math.round(selectionRect.height * scaleY)));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("框选截图失败，画布不可用");
+    }
+
+    ctx.drawImage(img, left, top, width, height, 0, 0, width, height);
+    return outputMimeType === "image/jpeg"
+      ? canvas.toDataURL("image/jpeg", 0.92)
+      : canvas.toDataURL("image/png");
+  }
+
+  function dataUrlToBlob(dataUrl) {
+    const [header, base64] = String(dataUrl || "").split(",");
+    if (!header || !base64) {
+      throw new Error("截图数据格式不对");
+    }
+    const mimeType = header.match(/data:(.*?);base64/)?.[1] || "image/png";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return new Blob([bytes], { type: mimeType });
+  }
+
+  async function copyImageDataUrlToClipboard(dataUrl) {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+      throw new Error("当前浏览器不支持直接复制截图");
+    }
+    const blob = dataUrlToBlob(dataUrl);
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        [blob.type || "image/png"]: blob
+      })
+    ]);
+  }
+
+  function showFloatingNotice(message, isError = false) {
+    if (!message) {
+      return;
+    }
+
+    const notice = document.createElement("div");
+    notice.className = `semrush-coach-floating-notice${isError ? " is-error" : ""}`;
+    notice.textContent = message;
+    root.appendChild(notice);
+
+    requestAnimationFrame(() => {
+      notice.classList.add("is-visible");
+    });
+
+    window.setTimeout(() => {
+      notice.classList.remove("is-visible");
+      window.setTimeout(() => notice.remove(), 220);
+    }, 1800);
   }
 
   function normalizeFocusRect(startX, startY, endX, endY) {
@@ -2779,6 +2867,7 @@
 
     const shadow = host.attachShadow({ mode: "open" });
     const currentTheme = state.focusMode.theme === "light" ? "light" : "dark";
+    state.focusMode.theme = currentTheme;
     shadow.innerHTML = `
       <style>
         .focus-shell {
@@ -3099,7 +3188,7 @@
           <div class="focus-actions">
             <button class="focus-button secondary focus-line-reset" type="button" data-action="clear-line-focus" style="display:none;">退出聚焦</button>
             <button class="focus-button secondary" type="button" data-action="rain">雨效：开</button>
-            <button class="focus-button secondary" type="button" data-action="theme">${currentTheme === "dark" ? "深色模式" : currentTheme === "light" ? "浅色模式" : "玻璃质感"}</button>
+            <button class="focus-button secondary" type="button" data-action="theme">${currentTheme === "dark" ? "深色模式" : "浅色模式"}</button>
             <button class="focus-button" type="button" data-action="exit">退出</button>
           </div>
         </div>
@@ -3120,6 +3209,7 @@
     const shellEl = shadow.querySelector(".focus-shell");
     const focusBodyEl = shadow.querySelector(".focus-body");
     const lineResetButtonEl = shadow.querySelector(".focus-line-reset");
+    const themeToggleButtonEl = shadow.querySelector('[data-action="theme"]');
     const maskFrameEl = shadow.querySelector(".focus-mask-frame");
     const maskPanes = {
       top: shadow.querySelector('.focus-mask-pane[data-pane="top"]'),
@@ -3200,11 +3290,9 @@
         ctx.clearRect(0, 0, w, h);
         ctx.lineWidth = 1.5; ctx.lineCap = "round";
         raindrops.forEach(p => {
-          if (state.focusMode.theme === "glass") {
-            ctx.strokeStyle = `rgba(220, 235, 255, ${p.o * 0.8})`;
-          } else {
-            ctx.strokeStyle = state.focusMode.theme === "dark" ? `rgba(180, 210, 255, ${p.o})` : `rgba(0, 50, 100, ${p.o * 0.4})`;
-          }
+          ctx.strokeStyle = state.focusMode.theme === "dark"
+            ? `rgba(180, 210, 255, ${p.o})`
+            : `rgba(0, 50, 100, ${p.o * 0.4})`;
           ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.s * 0.05, p.y + p.l); ctx.stroke();
           p.y += p.s; p.x += p.s * 0.05;
           if (p.y > h) { p.y = -p.l; p.x = Math.random() * w; }
@@ -3214,6 +3302,10 @@
       window.addEventListener("resize", initRain);
       initRain();
       drawRain();
+    }
+
+    if (themeToggleButtonEl instanceof HTMLElement) {
+      themeToggleButtonEl.textContent = currentTheme === "dark" ? "深色模式" : "浅色模式";
     }
 
     const clearSelectionActionButton = () => {
@@ -3326,15 +3418,14 @@
       if (!(target instanceof HTMLElement)) return;
       const action = target.getAttribute("data-action");
       if (action === "theme") {
-        const themes = ["dark", "light", "glass"];
-        const currentIndex = themes.indexOf(state.focusMode.theme || "dark");
+        const themes = ["dark", "light"];
+        const currentIndex = themes.indexOf(state.focusMode.theme === "light" ? "light" : "dark");
         const nextTheme = themes[(currentIndex + 1) % themes.length];
         state.focusMode.theme = nextTheme;
         
         if (shellEl instanceof HTMLElement) shellEl.dataset.theme = nextTheme;
         
-        const labels = { dark: "深色模式", light: "浅色模式", glass: "玻璃质感" };
-        target.textContent = labels[nextTheme];
+        target.textContent = nextTheme === "dark" ? "深色模式" : "浅色模式";
         return;
       } else if (action === "rain") {
         rainEnabled = !rainEnabled;
@@ -3476,7 +3567,7 @@
       event.preventDefault();
     };
 
-    const handleMouseUp = (event) => {
+    const handleMouseUp = async (event) => {
       if (!dragging) {
         return;
       }
@@ -3512,6 +3603,10 @@
 
   function startSelectionAnalysis() {
     deactivateFocusMode();
+
+    if (state.loading) {
+      return;
+    }
 
     if (state.selectionActive) {
       cleanupFocusSelection();
@@ -3563,7 +3658,7 @@
       event.preventDefault();
     };
 
-    const handleMouseUp = (event) => {
+    const handleMouseUp = async (event) => {
       if (!dragging) {
         return;
       }
@@ -3574,8 +3669,23 @@
         return;
       }
 
-      const selectedText = buildSelectionAnalysisText(rect);
       cleanupFocusSelection();
+      try {
+        setLoading(true);
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const clipboardDataUrl = await captureSelectionAttachment(rect, "image/png");
+        await setAttachmentFromDataUrl(clipboardDataUrl, "框选截图.png");
+        await copyImageDataUrlToClipboard(clipboardDataUrl);
+        showFloatingNotice("已复制截图，可直接粘贴");
+        openPanel(true);
+        inputEl.focus();
+      } catch (error) {
+        showFloatingNotice(error instanceof Error ? error.message : "框选截图失败，请稍后重试", true);
+      } finally {
+        setLoading(false);
+      }
+      event.preventDefault();
+      return;
 
       if (!selectedText) {
         state.history.push({
@@ -4597,6 +4707,9 @@
   });
   attachButtonEl.addEventListener("click", () => {
     fileInputEl.click();
+  });
+  selectionCaptureButtonEl.addEventListener("click", () => {
+    startSelectionAnalysis();
   });
 
   toolsToggleButtonEl?.addEventListener("click", (event) => {
