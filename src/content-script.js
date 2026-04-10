@@ -348,6 +348,13 @@
     longScreenshotItemEl.setAttribute("data-tool", "long-screenshot");
     longScreenshotItemEl.textContent = "网页长截图";
     toolsMenuEl.insertBefore(longScreenshotItemEl, toolsMenuEl.children[2] || null);
+
+    const qrCodeItemEl = document.createElement("button");
+    qrCodeItemEl.className = "semrush-coach-tools-item";
+    qrCodeItemEl.type = "button";
+    qrCodeItemEl.setAttribute("data-tool", "page-qr");
+    qrCodeItemEl.textContent = "网页二维码";
+    toolsMenuEl.insertBefore(qrCodeItemEl, toolsMenuEl.children[3] || null);
   }
   toolsMenuEl?.querySelector('[data-tool="selection-analysis"]')?.remove();
   const toolsMenuItems = Array.from(toolsMenuEl?.querySelectorAll(".semrush-coach-tools-item") || []);
@@ -385,6 +392,8 @@
       item.textContent = "框选分析";
     } else if (tool === "long-screenshot") {
       item.textContent = "网页长截图";
+    } else if (tool === "page-qr") {
+      item.textContent = "网页二维码";
     } else if (tool === "markdown") {
       item.textContent = "转 Markdown";
     } else if (tool === "extract-ui") {
@@ -622,6 +631,43 @@
       .replace(/\n+/g, " ")
       .trim();
     return escapeHtml(cleaned);
+  }
+
+  function buildQrCodeImageUrl(text, size = 320) {
+    return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=16&data=${encodeURIComponent(String(text || ""))}`;
+  }
+
+  function buildPageQrFilename() {
+    const safeBase = String(document.title || "网页二维码")
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, "-")
+      .replace(/\s+/g, " ")
+      .slice(0, 48) || "网页二维码";
+    return `${safeBase}-二维码.png`;
+  }
+
+  function renderQrCodeCard(item) {
+    const qrImageUrl = escapeAttribute(item.qrImageUrl || "");
+    const qrTargetUrl = String(item.qrTargetUrl || "");
+    const qrFilename = escapeAttribute(item.qrFilename || "网页二维码.png");
+    const safeUrl = escapeHtml(qrTargetUrl);
+    const encodedUrl = escapeAttribute(qrTargetUrl);
+
+    return `
+      <div class="semrush-coach-qr-card">
+        <div class="semrush-coach-qr-preview-wrap">
+          <img class="semrush-coach-qr-preview" src="${qrImageUrl}" alt="当前网页二维码" loading="lazy" referrerpolicy="no-referrer" />
+        </div>
+        <div class="semrush-coach-qr-meta">
+          <p class="semrush-coach-qr-caption">手机扫一扫就能打开当前网页</p>
+          <div class="semrush-coach-qr-url">${safeUrl}</div>
+        </div>
+        <div class="semrush-coach-qr-actions">
+          <button class="semrush-coach-qr-action" type="button" data-qr-action="copy-link" data-url="${encodedUrl}">复制链接</button>
+          <button class="semrush-coach-qr-action" type="button" data-qr-action="download" data-url="${escapeAttribute(item.qrImageUrl || "")}" data-filename="${qrFilename}">下载二维码</button>
+        </div>
+      </div>
+    `;
   }
 
   function renderMarkdownTable(lines) {
@@ -1884,13 +1930,15 @@
               ${renderMindmapSvg(item.answer || "")}
             </div>
           `
+          : item.renderAsQr
+              ? renderQrCodeCard(item)
           : item.renderAsCode
               ? `<pre class="semrush-coach-code-block"><code>${escapeHtml(String(item.answer || ""))}</code></pre>`
               : item.renderAsComparison
                   ? `<div class="semrush-coach-compare-report-preview">${renderComparisonReportBody(item.pageSummary || "竞品分析报告", item.comparisonTables, item.answer || "")}</div>`
               : renderMarkdownContent(item.answer || "");
 
-        const steps = item.renderAsMindmap ? "" : (item.suggestedNextSteps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+        const steps = item.renderAsMindmap || item.renderAsQr ? "" : (item.suggestedNextSteps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("");
         const encodedAnswer = escapeAttribute(item.answer || "");
         const encodedComparison = item.renderAsComparison
           ? escapeAttribute(
@@ -1901,7 +1949,7 @@
               })
             )
           : "";
-        const actionButton = item.renderAsMindmap
+        const actionButton = item.renderAsMindmap || item.renderAsQr
           ? ""
           : item.renderAsComparison
               ? `
@@ -2465,6 +2513,40 @@
       progressCard.remove();
       setLoading(false);
     }
+  }
+
+  async function createPageQrCode() {
+    const snapshot = getSnapshot();
+    const targetUrl = String(snapshot.url || location.href || "").trim();
+    if (!/^https?:\/\//i.test(targetUrl)) {
+      state.history.push({
+        role: "assistant",
+        pageSummary: "网页二维码生成失败",
+        answer: "当前这个页面链接不是标准网页地址，暂时没法直接转成二维码。",
+        suggestedNextSteps: ["换到正常的 http 或 https 页面再试一次"],
+        confidence: 0.34,
+        elementHints: []
+      });
+      renderHistory();
+      openPanel(true);
+      return;
+    }
+
+    state.history.push({
+      role: "assistant",
+      pageSummary: `网页二维码 · ${snapshot.title || "当前页面"}`,
+      answer: "手机扫一扫就能打开当前网页。",
+      suggestedNextSteps: [],
+      confidence: 0.98,
+      elementHints: [],
+      renderAsQr: true,
+      qrTargetUrl: targetUrl,
+      qrImageUrl: buildQrCodeImageUrl(targetUrl),
+      qrFilename: buildPageQrFilename()
+    });
+    renderHistory();
+    openPanel(true);
+    showFloatingNotice("网页二维码已生成");
   }
 
   function clearAttachment() {
@@ -4736,6 +4818,8 @@
       openCompareModal();
     } else if (tool === "long-screenshot") {
       captureLongScreenshot();
+    } else if (tool === "page-qr") {
+      createPageQrCode();
     } else if (tool === "markdown") {
       formatInputAsMarkdown();
     } else if (tool === "extract-ui") {
@@ -4903,6 +4987,33 @@
     const compareOpenBtn = target.closest(".semrush-coach-compare-open-btn");
     if (compareOpenBtn) {
       openCompareReportModal(compareOpenBtn.getAttribute("data-report") || "");
+      return;
+    }
+
+    const qrActionBtn = target.closest(".semrush-coach-qr-action");
+    if (qrActionBtn instanceof HTMLElement) {
+      const action = qrActionBtn.getAttribute("data-qr-action");
+      if (action === "copy-link") {
+        const targetUrl = qrActionBtn.getAttribute("data-url") || "";
+        try {
+          await navigator.clipboard.writeText(targetUrl);
+          showFloatingNotice("已复制链接");
+        } catch (error) {
+          showFloatingNotice("复制链接失败，请稍后重试", true);
+        }
+      } else if (action === "download") {
+        const imageUrl = qrActionBtn.getAttribute("data-url") || "";
+        const filename = qrActionBtn.getAttribute("data-filename") || "网页二维码.png";
+        if (imageUrl) {
+          const link = document.createElement("a");
+          link.href = imageUrl;
+          link.download = filename;
+          link.target = "_blank";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+        }
+      }
       return;
     }
 
