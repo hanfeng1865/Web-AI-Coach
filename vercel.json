@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "functions": {
+    "api/**/*.mjs": {
+      "runtime": "nodejs22.x"
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/trial/chat",
+      "dest": "/api/trial/chat.mjs"
+    },
+    {
+      "src": "/api/trial/status",
+      "dest": "/api/trial/status.mjs"
+    }
+  ]
+}
