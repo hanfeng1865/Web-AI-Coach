@@ -794,3 +794,96 @@ export async function generateProjectAssessmentAnalysis({ payload, settings }) {
   return attachUsageMeta(safeParseModelJson(content), data);
 }
 
+const TIMELINE_KEYWORD_SYSTEM_PROMPT = [
+  "你是一个对话问题压缩助手。",
+  "用户会给你一句真实提问，你要提炼出一个适合显示在时间轴节点旁边的短关键词。",
+  "输出要求：",
+  "1. 只输出 JSON，不要加代码块。",
+  "2. keyword 必须适合快速回忆问题主题，优先保留任务对象、产品名、核心动作。",
+  "3. keyword 尽量短，中文建议 4-10 个字；英文建议 1-3 个词。",
+  "4. 不要写成完整问句，不要带引号，不要加句号。",
+  "5. 如果原问题很泛，就提炼成最核心的主题词。",
+  'Schema: {"keyword":"string"}'
+].join("\n");
+
+export async function generateTimelineKeywordAnalysis({ payload, settings }) {
+  const timeoutMs = Math.min(Math.max(settings.timeoutMs || DEFAULT_TIMEOUT_MS, 15000), 45000);
+
+  const data = await requestDirectCompletion({
+    settings,
+    requestBody: {
+      model: settings.model || DEFAULT_MODEL,
+      temperature: 0.1,
+      messages: [
+        { role: "system", content: TIMELINE_KEYWORD_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                task: "TIMELINE_KEYWORD",
+                question: payload.question || ""
+              }, null, 2)
+            }
+          ]
+        }
+      ]
+    },
+    timeoutMs
+  });
+
+  const content = data?.choices?.[0]?.message?.content;
+  return attachUsageMeta(safeParseModelJson(content), data);
+}
+
+
+
+const BRD_RESEARCH_SYSTEM_PROMPT = [
+  "你是一个顶级的商业分析师和产品经理。你的任务是帮用户进行完整的 BRD (Business Requirements Document) 商业调研分析，遵循 6 步流程来冷酷、客观地验证一个产品想法是否可行、是否值得投入。",
+  "请按照以下结构强制输出 Markdown 报告：",
+  "第一步：需求验证 ✅。验证需求是否真实存在、频率和强度如何。判断这是否是一个伪需求或者已经被巨头免费解决的需求。",
+  "第二步：竞品痛点挖掘 🔍。寻找核心竞品，利用真实的差评痛点（也可以模拟）来证明现有竞品没有做好的地方，指出用户的机会点在哪里。",
+  "第三步：用户画像 👤。明确这群人是谁，什么场景下会用，并评估他们的付费意愿（愿意花多少钱）。",
+  "第四步：市场规模 📊。基于 TAM/SAM/SOM 框架估算市场潜力和可触达的市场（不需要极其精确，但需要基于合理的逻辑推演）。",
+  "第五步：定价策略 💲。分析竞品定价，给出合理的商业模式（如 Freemium、订阅制、买断制等）及定价值建议。",
+  "第六步：GO/NO-GO 决策 🎯。给出最终判断！如果不可行，明确列出 NO-GO 信号（如大厂垄断、技术门槛太高、用户没钱等）；如果可行，则给出 GO 的切入点和建议。",
+  "核心原则：",
+  "- 3小时调研 > 3个月弯路，直接戳破幻想。",
+  "- 差评比好评值钱，指出做产品的切入点需要“划算”而不是最便宜。",
+  "",
+  "你必须返回一个合法的 JSON 格式数据：",
+  '{"pageSummary": "商业可行性报告：xxx产品","answer": "完整的 6 步 Markdown 调研报告内容，注意换行符转移","suggestedNextSteps": ["探索竞争对手的获客渠道", "深入挖掘某类人群的具体痛点", "转而考虑其他切入点等"],"confidence": 0.95}'
+].join("\n");
+
+export async function generateBrdResearchAnalysis({ payload, settings }) {
+  const timeoutMs = Math.max(settings.timeoutMs || 180000, 240000);
+
+  const userContent = [
+    {
+      type: "text",
+      text: JSON.stringify({
+        task: "BRD_RESEARCH",
+        requirement: payload.requirement
+      }, null, 2)
+    }
+  ];
+
+  const messages = [
+    { role: "system", content: BRD_RESEARCH_SYSTEM_PROMPT },
+    { role: "user", content: userContent }
+  ];
+
+  const data = await requestModelCompletion({
+    settings,
+    feature: "brd_research",
+    requestBody: {
+      model: settings.model || "qwen-vl-max-latest",
+      temperature: 0.3,
+      messages
+    },
+    timeoutMs
+  });
+  const content = data?.choices?.[0]?.message?.content;
+  return attachUsageMeta(safeParseModelJson(content), data);
+}

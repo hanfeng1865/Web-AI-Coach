@@ -1,7 +1,21 @@
 {
   "name": "web-ai-coach",
-  "private": true,
+  "version": "1.2.1",
+  "description": "A lightweight Chrome extension that turns any web page into an AI coaching surface.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hanfeng1865/Web-AI-Coach.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hanfeng1865/Web-AI-Coach/issues"
+  },
+  "homepage": "https://github.com/hanfeng1865/Web-AI-Coach#readme",
   "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check src/content-script.js && node --check src/background.js && node --check src/core/remote-client.js"
+  },
   "engines": {
     "node": "22.x"
   }

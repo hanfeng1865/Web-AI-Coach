@@ -2,7 +2,14 @@
   if (window.__pageCoachMounted) {
     return;
   }
-  window.__pageCoachMounted = true;
+  const pageCoachInstanceId = `semrush-coach-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  window.__pageCoachMounted = pageCoachInstanceId;
+
+  document.querySelectorAll(".semrush-coach-root, .semrush-coach-ai-timeline").forEach((node) => {
+    if (node instanceof HTMLElement) {
+      node.remove();
+    }
+  });
 
   const DEFAULT_ALLOWED_HOSTS = [
     "semrush.com",
@@ -54,7 +61,13 @@
       signature: "",
       items: [],
       hoverIndex: -1,
-      refreshQueued: false
+      activeIndex: -1,
+      activeLockUntil: 0,
+      refreshQueued: false,
+      keywordCache: {},
+      keywordRequests: new Set(),
+      markedKeys: new Set(),
+      runtimeUnavailable: false
     },
     selectionActive: false,
     selectionCleanup: null,
@@ -71,6 +84,7 @@
 
   const root = document.createElement("div");
   root.className = "semrush-coach-root";
+  root.dataset.pageCoachInstance = pageCoachInstanceId;
   document.body.appendChild(root);
 
   root.innerHTML = `
@@ -113,7 +127,8 @@
           <label class="semrush-coach-setting-full">
             <span>你的 Qwen API Key（可选，免费次数用完后使用）</span>
             <div class="semrush-coach-password-wrapper" style="display: flex; align-items: center; gap: 8px;">
-              <input class="semrush-coach-setting-api-key semrush-coach-masked-input" type="text" autocomplete="off" data-lpignore="true" data-1p-ignore="true" placeholder="填写通义千问 / Qwen 的 API Key" style="flex: 1;" />
+              <input class="semrush-coach-setting-api-key semrush-coach-masked-input" type="text" autocomplete="off" data-lpignore="true" data-1p-ignore="true" placeholder="填写你的 API Key" style="flex: 1;" />
+              <button type="button" class="semrush-coach-api-key-help-trigger">获取说明</button>
               <button type="button" class="semrush-coach-toggle-password" style="background: none; border: none; cursor: pointer; padding: 4px; font-size: 16px; opacity: 0.7;">👁️</button>
             </div>
           </label>
@@ -180,10 +195,26 @@
         </div>
       </div>
     </section>
+    <section class="semrush-coach-api-key-help-modal semrush-coach-project-assessment-modal semrush-coach-hidden" aria-hidden="true">
+      <div class="semrush-coach-project-assessment-modal-backdrop"></div>
+      <div class="semrush-coach-project-assessment-modal-dialog semrush-coach-api-key-help-dialog">
+        <div class="semrush-coach-project-assessment-modal-header">
+          <p class="semrush-coach-project-assessment-modal-title">Qwen API 获取说明</p>
+          <button class="semrush-coach-api-key-help-close semrush-coach-project-assessment-modal-close" type="button" aria-label="关闭">×</button>
+        </div>
+        <div class="semrush-coach-project-assessment-modal-body semrush-coach-api-key-help-body">
+          <p>Qwen API 获取地址在阿里云百炼这里：</p>
+          <p><a href="https://bailian.console.aliyun.com/" target="_blank" rel="noreferrer noopener">https://bailian.console.aliyun.com/</a></p>
+          <p>进去后开通百炼服务，创建 API Key 就行。</p>
+          <p>另外记得先充值，个人测试的话充 5 元 一般就能用挺久。</p>
+        </div>
+      </div>
+    </section>
   `;
 
   const aiTimelineEl = document.createElement("aside");
   aiTimelineEl.className = "semrush-coach-ai-timeline semrush-coach-hidden";
+  aiTimelineEl.dataset.pageCoachInstance = pageCoachInstanceId;
   aiTimelineEl.innerHTML = `
     <div class="semrush-coach-ai-timeline-body">
       <div class="semrush-coach-ai-timeline-line"></div>
@@ -192,6 +223,19 @@
     <div class="semrush-coach-ai-timeline-preview semrush-coach-hidden"></div>
   `;
   document.body.appendChild(aiTimelineEl);
+
+  function cleanupDuplicatePageCoachNodes() {
+    document.querySelectorAll(".semrush-coach-root, .semrush-coach-ai-timeline").forEach((node) => {
+      if (!(node instanceof HTMLElement)) {
+        return;
+      }
+      if (node.dataset.pageCoachInstance !== pageCoachInstanceId) {
+        node.remove();
+      }
+    });
+  }
+
+  cleanupDuplicatePageCoachNodes();
 
   const bubble = root.querySelector(".semrush-coach-bubble");
   const panel = root.querySelector(".semrush-coach-panel");
@@ -206,6 +250,10 @@
   const projectAssessmentSubmitEl = root.querySelector(".semrush-coach-project-assessment-btn-submit");
   const projectAssessmentInputEl = root.querySelector(".semrush-coach-project-assessment-input");
   const projectAssessmentBackdropEl = root.querySelector(".semrush-coach-project-assessment-modal-backdrop");
+  const apiKeyHelpTriggerEl = root.querySelector(".semrush-coach-api-key-help-trigger");
+  const apiKeyHelpModalEl = root.querySelector(".semrush-coach-api-key-help-modal");
+  const apiKeyHelpCloseEl = root.querySelector(".semrush-coach-api-key-help-close");
+  const apiKeyHelpBackdropEl = apiKeyHelpModalEl?.querySelector(".semrush-coach-project-assessment-modal-backdrop");
   let compareModalEl = root.querySelector(".semrush-coach-compare-modal");
   let compareModalCloseEl = root.querySelector(".semrush-coach-compare-modal-close");
   let compareUrlInputEls = Array.from(root.querySelectorAll(".semrush-coach-compare-url"));
@@ -422,11 +470,11 @@
 
   }
   toolsMenuEl?.querySelector('[data-tool="selection-analysis"]')?.remove();
+  toolsMenuEl?.querySelector('[data-tool="extract-ui"]')?.remove();
   const toolMenuOrder = [
     "project-assessment",
     "compare-page",
     "generate-prd",
-    "extract-ui",
     "markdown",
     "long-screenshot",
     "page-qr"
@@ -544,7 +592,10 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     {
       id: "chatgpt",
       hosts: ["chatgpt.com", "chat.openai.com"],
-      messageSelectors: ['div[data-message-author-role="user"]', '[data-testid^="conversation-turn-"] [data-message-author-role="user"]']
+      messageSelectors: ['div[data-message-author-role="user"]', '[data-testid^="conversation-turn-"] [data-message-author-role="user"]'],
+      textSelectors: [".whitespace-pre-wrap", "[dir='auto']"],
+      minBubbleWidth: 48,
+      timelineRightOffset: 72
     },
     {
       id: "gemini",
@@ -555,7 +606,9 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
         ".user-query-container .user-query-container .user-query-container",
         "[data-test-id='user-query']",
         "[data-testid='user-query']"
-      ]
+      ],
+      textSelectors: [".query-text", ".query-text-line", ".user-query-bubble-with-background", "[dir='auto']"],
+      minBubbleWidth: 48
     }
   ];
 
@@ -604,12 +657,13 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       .trim();
   }
 
-  function extractTimelineNodeText(node) {
+  function extractTimelineNodeText(node, siteConfig = null) {
     if (!(node instanceof HTMLElement)) {
       return "";
     }
 
     const preferredSelectors = [
+      ...(Array.isArray(siteConfig?.textSelectors) ? siteConfig.textSelectors : []),
       ".query-text",
       ".query-text-line",
       ".user-query-bubble-with-background",
@@ -634,34 +688,51 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       return [];
     }
 
+    const mainRoot =
+      document.querySelector("main") ||
+      document.querySelector("[role='main']") ||
+      document.body;
+    const visited = new Set();
+
     const nodes = Array.from(
       document.querySelectorAll(siteConfig.messageSelectors.join(","))
     ).filter((node) => node instanceof HTMLElement);
 
     const candidates = nodes
       .map((node) => {
-        const element = node instanceof HTMLElement ? node : null;
+        const rawElement = node instanceof HTMLElement ? node : null;
+        const element = getTimelineBubbleContainer(rawElement, mainRoot);
         if (!element || !element.isConnected) {
           return null;
         }
 
+        if (visited.has(element)) {
+          return null;
+        }
+        visited.add(element);
+
         const rect = element.getBoundingClientRect();
-        if (rect.width < 120 || rect.height < 24) {
+        const minBubbleWidth = Number(siteConfig.minBubbleWidth) || 48;
+        if (rect.width < minBubbleWidth || rect.height < 20) {
           return null;
         }
 
-        const text = extractTimelineNodeText(element);
+        const text = extractTimelineNodeText(element, siteConfig);
         if (!text) {
           return null;
         }
 
         const top = Math.round(rect.top + window.scrollY);
+        const centerY = top + rect.height / 2;
 
         return {
           element,
           text,
           preview: truncateTimelinePreview(text),
+          keyword: "",
+          markerKey: getAiTimelineMarkerKey(text, top),
           top,
+          centerY,
           height: Math.round(rect.height)
         };
       })
@@ -681,7 +752,273 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       items.push(candidate);
     }
 
+    if (!items.length && siteConfig.useRightBubbleFallback) {
+      return collectAiTimelineItemsByRightBubble(siteConfig);
+    }
+
     return items;
+  }
+
+  function isTransparentColor(color) {
+    const normalized = String(color || "").trim().toLowerCase();
+    return !normalized || normalized === "transparent" || normalized === "rgba(0, 0, 0, 0)";
+  }
+
+  function getTimelineBubbleContainer(element, root) {
+    let current = element instanceof HTMLElement ? element : null;
+    let bestMatch = null;
+    let bestScore = -1;
+    let depth = 0;
+
+    while (current && current !== root && depth < 5) {
+      const rect = current.getBoundingClientRect();
+      const style = window.getComputedStyle(current);
+      const backgroundColor = style.backgroundColor;
+      const borderRadius = Number.parseFloat(style.borderTopLeftRadius || "0");
+      const rightAligned =
+        rect.right > window.innerWidth * 0.7 ||
+        style.justifyContent === "flex-end" ||
+        style.alignItems === "flex-end" ||
+        style.alignSelf === "flex-end" ||
+        style.textAlign === "right" ||
+        style.marginLeft === "auto";
+
+      let score = 0;
+      if (!isTransparentColor(backgroundColor)) {
+        score += 2;
+      }
+      if (borderRadius >= 12) {
+        score += 1;
+      }
+      if (rightAligned) {
+        score += 2;
+      }
+      if (rect.width >= 36 && rect.height >= 20) {
+        score += 1;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = current;
+      }
+
+      current = current.parentElement;
+      depth += 1;
+    }
+
+    return bestScore >= 3 ? bestMatch : element;
+  }
+
+  function collectAiTimelineItemsByRightBubble(siteConfig) {
+    const mainRoot =
+      document.querySelector("main") ||
+      document.querySelector("[role='main']") ||
+      document.body;
+
+    const selectorList = Array.isArray(siteConfig.fallbackSelectors) && siteConfig.fallbackSelectors.length
+      ? siteConfig.fallbackSelectors.join(",")
+      : "div, article, section, p, span";
+    const visited = new Set();
+
+    const candidates = Array.from(
+      mainRoot.querySelectorAll(selectorList)
+    )
+      .filter((node) => node instanceof HTMLElement)
+      .map((node) => {
+        const rawElement = node instanceof HTMLElement ? node : null;
+        const element = getTimelineBubbleContainer(rawElement, mainRoot);
+        if (!element || !element.isConnected) {
+          return null;
+        }
+
+        if (visited.has(element)) {
+          return null;
+        }
+        visited.add(element);
+
+        const rect = element.getBoundingClientRect();
+        if (rect.width < (Number(siteConfig.minBubbleWidth) || 36) || rect.height < 20) {
+          return null;
+        }
+
+        const centerX = rect.left + rect.width / 2;
+        const rightEdge = rect.right;
+        if (centerX < window.innerWidth * 0.55 && rightEdge < window.innerWidth * 0.72) {
+          return null;
+        }
+
+        const style = window.getComputedStyle(element);
+        const backgroundColor = style.backgroundColor;
+        const borderRadius = Number.parseFloat(style.borderTopLeftRadius || "0");
+        const hasRightAlignedStyle =
+          style.justifyContent === "flex-end" ||
+          style.alignItems === "flex-end" ||
+          style.alignSelf === "flex-end" ||
+          style.textAlign === "right" ||
+          style.marginLeft === "auto";
+        if (isTransparentColor(backgroundColor) && borderRadius < 12 && !hasRightAlignedStyle) {
+          return null;
+        }
+
+        const text = extractTimelineNodeText(element, siteConfig);
+        if (!text || text.length > 160) {
+          return null;
+        }
+
+        const top = Math.round(rect.top + window.scrollY);
+        const centerY = top + rect.height / 2;
+
+        return {
+          element,
+          text,
+          preview: truncateTimelinePreview(text),
+          keyword: "",
+          markerKey: getAiTimelineMarkerKey(text, top),
+          top,
+          centerY,
+          height: Math.round(rect.height)
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.top - b.top);
+
+    const items = [];
+    for (const candidate of candidates) {
+      const previous = items[items.length - 1];
+      if (
+        previous &&
+        (
+          (
+            normalizeTimelineText(previous.text).toLowerCase() === normalizeTimelineText(candidate.text).toLowerCase() &&
+            Math.abs(previous.top - candidate.top) <= Math.max(56, Math.max(previous.height, candidate.height))
+          ) ||
+          (
+            previous.element instanceof HTMLElement &&
+            candidate.element instanceof HTMLElement &&
+            (
+              previous.element.contains(candidate.element) ||
+              candidate.element.contains(previous.element)
+            )
+          )
+        )
+      ) {
+        continue;
+      }
+      items.push(candidate);
+    }
+
+    return items;
+  }
+
+  function getTimelineKeywordCacheKey(text) {
+    return normalizeTimelineText(text).toLowerCase();
+  }
+
+  function getAiTimelineMarkerKey(text, top) {
+    const pathKey = `${window.location.origin}${window.location.pathname}`;
+    const textKey = normalizeTimelineText(text).toLowerCase();
+    const topBucket = Math.round(Number(top) / 24);
+    return `${pathKey}::${topBucket}::${textKey}`;
+  }
+
+  function isAiTimelineMarked(item) {
+    return Boolean(item?.markerKey && state.aiTimeline.markedKeys.has(item.markerKey));
+  }
+
+  function toggleAiTimelineMarked(index) {
+    const item = state.aiTimeline.items?.[index];
+    if (!item?.markerKey) {
+      return false;
+    }
+
+    if (state.aiTimeline.markedKeys.has(item.markerKey)) {
+      state.aiTimeline.markedKeys.delete(item.markerKey);
+      return false;
+    }
+
+    state.aiTimeline.markedKeys.add(item.markerKey);
+    return true;
+  }
+
+  function applyTimelineKeywords(items) {
+    return items.map((item) => {
+      const cacheKey = getTimelineKeywordCacheKey(item.text);
+      return {
+        ...item,
+        keyword: state.aiTimeline.keywordCache[cacheKey] || ""
+      };
+    });
+  }
+
+  async function requestAiTimelineKeyword(item) {
+    if (
+      !item?.text ||
+      state.aiTimeline.runtimeUnavailable ||
+      !hasUserApiAccess() ||
+      !globalThis.chrome?.runtime?.id ||
+      typeof globalThis.chrome?.runtime?.sendMessage !== "function"
+    ) {
+      return;
+    }
+
+    const cacheKey = getTimelineKeywordCacheKey(item.text);
+    if (!cacheKey || state.aiTimeline.keywordCache[cacheKey] || state.aiTimeline.keywordRequests.has(cacheKey)) {
+      return;
+    }
+
+    state.aiTimeline.keywordRequests.add(cacheKey);
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "SEMRUSH_COACH_TIMELINE_KEYWORD",
+        payload: {
+          question: item.text
+        }
+      });
+
+      if (!response?.ok) {
+        return;
+      }
+
+      const keyword = normalizeTimelineText(String(response.data?.keyword || "")).slice(0, 10);
+      if (!keyword) {
+        return;
+      }
+
+      state.aiTimeline.keywordCache[cacheKey] = keyword;
+      state.aiTimeline.items = state.aiTimeline.items.map((currentItem) => {
+        if (getTimelineKeywordCacheKey(currentItem.text) !== cacheKey) {
+          return currentItem;
+        }
+        return {
+          ...currentItem,
+          keyword
+        };
+      });
+      renderAiConversationTimelineEnhanced(true);
+    } catch (error) {
+      if (isExtensionContextInvalidError(error)) {
+        state.aiTimeline.runtimeUnavailable = true;
+        state.aiTimeline.keywordRequests.clear();
+        return;
+      }
+      console.warn("[AI Coach] 时间轴关键词生成失败", error);
+    } finally {
+      state.aiTimeline.keywordRequests.delete(cacheKey);
+    }
+  }
+
+  function hydrateAiTimelineKeywords(items) {
+    if (!hasUserApiAccess() || state.aiTimeline.runtimeUnavailable) {
+      return items;
+    }
+
+    const hydratedItems = applyTimelineKeywords(items);
+    const nextPendingItem = hydratedItems.find((item) => item.text && !item.keyword);
+    if (nextPendingItem) {
+      requestAiTimelineKeyword(nextPendingItem);
+    }
+    return hydratedItems;
   }
 
   function hideAiTimelinePreview() {
@@ -708,6 +1045,11 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     aiTimelinePreviewEl.classList.remove("semrush-coach-hidden");
   }
 
+  function setAiTimelineActiveIndex(index, lockMs = 0) {
+    state.aiTimeline.activeIndex = Number.isFinite(index) ? index : -1;
+    state.aiTimeline.activeLockUntil = lockMs > 0 ? Date.now() + lockMs : 0;
+  }
+
   function updateAiTimelineActiveState() {
     if (!(aiTimelineItemsEl instanceof HTMLElement)) {
       return;
@@ -718,25 +1060,44 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       return;
     }
 
-    const viewportAnchor = window.innerHeight * 0.35;
-    let bestIndex = 0;
-    let bestDistance = Number.POSITIVE_INFINITY;
+    const now = Date.now();
+    let bestIndex =
+      state.aiTimeline.activeIndex >= 0 &&
+      state.aiTimeline.activeIndex < items.length &&
+      state.aiTimeline.activeLockUntil > now
+        ? state.aiTimeline.activeIndex
+        : -1;
 
-    items.forEach((item, index) => {
-      const rect = item.element?.getBoundingClientRect?.();
-      if (!rect) {
-        return;
+    if (bestIndex < 0) {
+      if (state.aiTimeline.activeLockUntil <= now) {
+        state.aiTimeline.activeLockUntil = 0;
       }
-      const center = rect.top + rect.height / 2;
-      const distance = Math.abs(center - viewportAnchor);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestIndex = index;
+      if (state.aiTimeline.activeIndex >= items.length) {
+        state.aiTimeline.activeIndex = -1;
       }
-    });
+
+      const viewportAnchor = window.innerHeight * 0.35;
+      let bestDistance = Number.POSITIVE_INFINITY;
+
+      bestIndex = 0;
+      items.forEach((item, index) => {
+        const rect = item.element?.getBoundingClientRect?.();
+        if (!rect) {
+          return;
+        }
+        const center = rect.top + rect.height / 2;
+        const distance = Math.abs(center - viewportAnchor);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = index;
+        }
+      });
+      state.aiTimeline.activeIndex = bestIndex;
+    }
 
     aiTimelineItemsEl.querySelectorAll(".semrush-coach-ai-timeline-dot").forEach((dot, index) => {
       dot.classList.toggle("is-active", index === bestIndex);
+      dot.closest(".semrush-coach-ai-timeline-item")?.classList.toggle("is-active", index === bestIndex);
     });
   }
 
@@ -798,8 +1159,219 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     state.aiTimeline.refreshQueued = true;
     window.requestAnimationFrame(() => {
       state.aiTimeline.refreshQueued = false;
-      renderAiConversationTimeline(force);
+      renderAiConversationTimelineEnhanced(force);
     });
+  }
+
+  function observeAiTimelineMutations() {
+    const observerRoot =
+      document.querySelector("main") ||
+      document.querySelector("[role='main']") ||
+      document.body;
+
+    if (!(observerRoot instanceof HTMLElement)) {
+      return null;
+    }
+
+    let refreshTimer = null;
+    const observer = new MutationObserver(() => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        queueAiTimelineRefresh(true);
+      }, 180);
+    });
+
+    observer.observe(observerRoot, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+
+    return observer;
+  }
+
+  function getAiTimelineEventTarget(target) {
+    if (!(target instanceof HTMLElement)) {
+      return null;
+    }
+
+    const interactive = target.closest(".semrush-coach-ai-timeline-dot, .semrush-coach-ai-timeline-keyword, .semrush-coach-ai-timeline-item");
+    if (!(interactive instanceof HTMLElement)) {
+      return null;
+    }
+
+    const index = Number(
+      interactive.getAttribute("data-index") ||
+      interactive.closest(".semrush-coach-ai-timeline-item")?.getAttribute("data-index")
+    );
+
+    if (!Number.isFinite(index) || index < 0) {
+      return null;
+    }
+
+    const item = state.aiTimeline.items[index];
+    if (!item) {
+      return null;
+    }
+
+    return {
+      index,
+      item,
+      anchorEl: interactive.classList.contains("semrush-coach-ai-timeline-item")
+        ? interactive.querySelector(".semrush-coach-ai-timeline-dot") || interactive
+        : interactive
+    };
+  }
+
+  function getAiTimelineItemPercent(item, index, items) {
+    if (!item) {
+      return 0;
+    }
+
+    const centers = items
+      .map((entry) => Number(entry.centerY))
+      .filter((value) => Number.isFinite(value));
+
+    if (centers.length <= 1) {
+      return 0;
+    }
+
+    const minCenter = Math.min(...centers);
+    const maxCenter = Math.max(...centers);
+    const currentCenter = Number.isFinite(item.centerY)
+      ? item.centerY
+      : item.top + item.height / 2;
+
+    if (maxCenter - minCenter < 24) {
+      return items.length <= 1 ? 0 : (index / (items.length - 1)) * 100;
+    }
+
+    const percent = ((currentCenter - minCenter) / (maxCenter - minCenter)) * 100;
+    return Math.max(0, Math.min(100, percent));
+  }
+
+  function buildAiTimelineLayout(items) {
+    const timelineRect = aiTimelineItemsEl?.getBoundingClientRect?.();
+    const timelineHeight = Math.max(320, Math.round(timelineRect?.height || aiTimelineEl?.getBoundingClientRect?.().height || 420));
+    const minGapPx = 56;
+    const edgePaddingPx = 24;
+
+    const dotPercents = items.map((item, index) => getAiTimelineItemPercent(item, index, items));
+    const dotPositions = dotPercents.map((percent) => (percent / 100) * timelineHeight);
+    const labelPositions = dotPositions.map((value) =>
+      Math.max(edgePaddingPx, Math.min(timelineHeight - edgePaddingPx, value))
+    );
+
+    for (let index = 1; index < labelPositions.length; index += 1) {
+      labelPositions[index] = Math.max(labelPositions[index], labelPositions[index - 1] + minGapPx);
+    }
+
+    const overflow = labelPositions[labelPositions.length - 1] - (timelineHeight - edgePaddingPx);
+    if (overflow > 0) {
+      for (let index = 0; index < labelPositions.length; index += 1) {
+        labelPositions[index] -= overflow;
+      }
+    }
+
+    for (let index = labelPositions.length - 2; index >= 0; index -= 1) {
+      labelPositions[index] = Math.min(labelPositions[index], labelPositions[index + 1] - minGapPx);
+    }
+
+    for (let index = 0; index < labelPositions.length; index += 1) {
+      labelPositions[index] = Math.max(edgePaddingPx, Math.min(timelineHeight - edgePaddingPx, labelPositions[index]));
+    }
+
+    return items.map((item, index) => {
+      const labelTopPercent = (labelPositions[index] / timelineHeight) * 100;
+      const dotTopPercent = labelTopPercent;
+      const showKeyword = Boolean(item.keyword);
+      const side = index % 2 === 0 ? "left" : "right";
+
+      return {
+        item,
+        index,
+        dotTopPercent,
+        labelTopPercent,
+        showKeyword,
+        side
+      };
+    });
+  }
+
+  function renderAiConversationTimelineEnhanced(force = false) {
+    cleanupDuplicatePageCoachNodes();
+
+    const siteConfig = getAiTimelineSiteConfig();
+    if (globalThis.chrome?.runtime?.id) {
+      state.aiTimeline.runtimeUnavailable = false;
+    }
+    const shouldShow = Boolean(
+      state.settings.aiTimelineEnabled &&
+        siteConfig &&
+        !state.open
+    );
+
+    if (!(aiTimelineEl instanceof HTMLElement) || !(aiTimelineItemsEl instanceof HTMLElement)) {
+      return;
+    }
+
+    const rightOffset = Number(siteConfig?.timelineRightOffset);
+    aiTimelineEl.style.setProperty(
+      "--semrush-coach-ai-timeline-right",
+      `${Number.isFinite(rightOffset) ? rightOffset : 14}px`
+    );
+
+    if (!shouldShow) {
+      aiTimelineEl.classList.add("semrush-coach-hidden");
+      hideAiTimelinePreview();
+      state.aiTimeline.signature = "";
+      state.aiTimeline.items = [];
+      return;
+    }
+
+    const items = hydrateAiTimelineKeywords(collectAiTimelineItems());
+    const signature = items.map((item) => `${item.top}:${item.text.slice(0, 60)}`).join("|");
+
+    if (!force && signature === state.aiTimeline.signature) {
+      aiTimelineEl.classList.toggle("semrush-coach-hidden", !items.length);
+      updateAiTimelineActiveState();
+      return;
+    }
+
+    state.aiTimeline.signature = signature;
+    state.aiTimeline.items = items;
+    aiTimelineEl.classList.toggle("semrush-coach-hidden", !items.length);
+    hideAiTimelinePreview();
+
+    const layoutItems = buildAiTimelineLayout(items);
+
+    aiTimelineItemsEl.innerHTML = layoutItems
+      .map(({ item, index, dotTopPercent, labelTopPercent, showKeyword, side }) => {
+        const ariaLabel = item.keyword
+          ? `跳转到第 ${index + 1} 次提问：${item.keyword}`
+          : `跳转到第 ${index + 1} 次提问`;
+        const markedClass = isAiTimelineMarked(item) ? " is-marked" : "";
+        const keywordHtml = showKeyword
+          ? `<button class="semrush-coach-ai-timeline-keyword semrush-coach-ai-timeline-keyword-${side}${markedClass}" type="button" data-index="${index}" aria-label="${escapeAttribute(ariaLabel)}">${escapeHtml(item.keyword)}</button>`
+          : "";
+        return `
+          <div class="semrush-coach-ai-timeline-item" style="--label-top:${labelTopPercent}%; --dot-top:${dotTopPercent}%;" data-index="${index}">
+            ${keywordHtml}
+            <button
+              class="semrush-coach-ai-timeline-dot"
+              type="button"
+              data-index="${index}"
+              aria-label="${escapeAttribute(ariaLabel)}"
+            ></button>
+          </div>
+        `;
+      })
+      .join("");
+
+    updateAiTimelineActiveState();
   }
 
   function hostMatchesPattern(hostname, pattern) {
@@ -5132,6 +5704,9 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   projectAssessmentCancelEl?.addEventListener("click", closeProjectAssessmentModal);
   projectAssessmentBackdropEl?.addEventListener("click", closeProjectAssessmentModal);
   projectAssessmentSubmitEl?.addEventListener("click", runProjectAssessment);
+  apiKeyHelpTriggerEl?.addEventListener("click", openApiKeyHelpModal);
+  apiKeyHelpCloseEl?.addEventListener("click", closeApiKeyHelpModal);
+  apiKeyHelpBackdropEl?.addEventListener("click", closeApiKeyHelpModal);
   mindmapModalCloseEl?.addEventListener("click", closeMindmapModal);
   compareModalCloseEl?.addEventListener("click", closeCompareModal);
   compareReportModalCloseEl?.addEventListener("click", closeCompareReportModal);
@@ -5251,68 +5826,59 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   });
 
   aiTimelineEl?.addEventListener("mouseover", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) {
-      return;
-    }
-
-    const dot = target.closest(".semrush-coach-ai-timeline-dot");
-    if (!(dot instanceof HTMLElement)) {
-      return;
-    }
-
-    const index = Number(dot.getAttribute("data-index"));
-    const item = state.aiTimeline.items[index];
-    if (item?.preview) {
-      showAiTimelinePreview(item.preview, dot);
+    const match = getAiTimelineEventTarget(event.target);
+    if (match?.item?.preview) {
+      showAiTimelinePreview(match.item.preview, match.anchorEl);
     }
   });
 
   aiTimelineEl?.addEventListener("mouseout", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement) || !target.closest(".semrush-coach-ai-timeline-dot")) {
+    if (!getAiTimelineEventTarget(event.target)) {
       return;
     }
     hideAiTimelinePreview();
   });
 
   aiTimelineEl?.addEventListener("focusin", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) {
-      return;
-    }
-
-    const dot = target.closest(".semrush-coach-ai-timeline-dot");
-    if (!(dot instanceof HTMLElement)) {
-      return;
-    }
-
-    const index = Number(dot.getAttribute("data-index"));
-    const item = state.aiTimeline.items[index];
-    if (item?.preview) {
-      showAiTimelinePreview(item.preview, dot);
+    const match = getAiTimelineEventTarget(event.target);
+    if (match?.item?.preview) {
+      showAiTimelinePreview(match.item.preview, match.anchorEl);
     }
   });
 
   aiTimelineEl?.addEventListener("focusout", hideAiTimelinePreview);
 
   aiTimelineEl?.addEventListener("click", (event) => {
+    const match = getAiTimelineEventTarget(event.target);
+    if (match?.item?.element instanceof HTMLElement) {
+      setAiTimelineActiveIndex(match.index, 1200);
+      updateAiTimelineActiveState();
+      match.item.element.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      updateAiTimelineActiveState();
+    }
+  });
+
+  aiTimelineEl?.addEventListener("dblclick", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
       return;
     }
 
-    const dot = target.closest(".semrush-coach-ai-timeline-dot");
-    if (!(dot instanceof HTMLElement)) {
+    const keywordEl = target.closest(".semrush-coach-ai-timeline-keyword");
+    if (!(keywordEl instanceof HTMLElement)) {
       return;
     }
 
-    const index = Number(dot.getAttribute("data-index"));
-    const item = state.aiTimeline.items[index];
-    if (item?.element instanceof HTMLElement) {
-      item.element.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-      updateAiTimelineActiveState();
+    event.preventDefault();
+    event.stopPropagation();
+
+    const index = Number(keywordEl.getAttribute("data-index"));
+    if (!Number.isFinite(index) || index < 0) {
+      return;
     }
+
+    const marked = toggleAiTimelineMarked(index);
+    keywordEl.classList.toggle("is-marked", marked);
   });
 
   window.addEventListener("scroll", () => {
@@ -5608,6 +6174,8 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     }
   });
 
+  observeAiTimelineMutations();
+
   window.setInterval(() => {
     if (window.location.href !== state.lastUrl) {
       state.lastUrl = window.location.href;
@@ -5619,8 +6187,6 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       }
       return;
     }
-
-    queueAiTimelineRefresh();
   }, 1200);
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -5665,6 +6231,23 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       projectAssessmentModalEl.classList.add("semrush-coach-hidden");
       projectAssessmentModalEl.setAttribute("aria-hidden", "true");
     }
+  }
+
+  function openApiKeyHelpModal() {
+    if (!apiKeyHelpModalEl) {
+      return;
+    }
+    console.log("[AI Coach] 打开 API Key 获取说明弹窗");
+    apiKeyHelpModalEl.classList.remove("semrush-coach-hidden");
+    apiKeyHelpModalEl.setAttribute("aria-hidden", "false");
+  }
+
+  function closeApiKeyHelpModal() {
+    if (!apiKeyHelpModalEl) {
+      return;
+    }
+    apiKeyHelpModalEl.classList.add("semrush-coach-hidden");
+    apiKeyHelpModalEl.setAttribute("aria-hidden", "true");
   }
 
   async function runProjectAssessment() {

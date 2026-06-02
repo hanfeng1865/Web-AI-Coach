@@ -1,5 +1,5 @@
 import { generateGuidance } from "./core/guidance-engine.js";
-import { getDefaultRemoteSettings, generateRemoteGuidance, testRemoteConnection, generateUISpecAnalysis, generatePRDAnalysis, generatePageSummaryAnalysis, generatePageDiffAnalysis, getTrialStatus, generateProjectAssessmentAnalysis } from "./core/remote-client.js";
+import { getDefaultRemoteSettings, generateRemoteGuidance, testRemoteConnection, generateUISpecAnalysis, generatePRDAnalysis, generatePageSummaryAnalysis, generatePageDiffAnalysis, getTrialStatus, generateProjectAssessmentAnalysis, generateTimelineKeywordAnalysis } from "./core/remote-client.js";
 import { buildRedactionSummary, redactArray, redactText } from "./core/redaction.js";
 
 const DEFAULT_ALLOWED_HOSTS = [
@@ -12,7 +12,15 @@ const DEFAULT_ALLOWED_HOSTS = [
   "*.polymarket.com",
   "chatgpt.com",
   "chat.openai.com",
-  "gemini.google.com"
+  "gemini.google.com",
+  "inhouse.doubao.com",
+  "www.doubao.com",
+  "doubao.com",
+  "www.qianwen.com",
+  "qianwen.com",
+  "chat.qwen.ai",
+  "qwen.ai",
+  "tongyi.aliyun.com"
 ];
 
 const DEFAULT_SETTINGS = {
@@ -35,6 +43,10 @@ function hasConfiguredRemoteAccess(settings) {
     settings?.remoteEnabled &&
       ((settings?.trialEnabled && settings?.trialApiUrl) || settings?.apiKey)
   );
+}
+
+function hasDirectApiAccess(settings) {
+  return Boolean(settings?.remoteEnabled && settings?.apiKey);
 }
 
 async function enrichSettings(settings) {
@@ -354,6 +366,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true, data: summaryData });
       } catch (error) {
         console.error("[AI Coach] 页面总结与脑图生成失败:", error);
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.type === "SEMRUSH_COACH_TIMELINE_KEYWORD") {
+    (async () => {
+      try {
+        const settings = await getSettings();
+        if (!hasDirectApiAccess(settings)) {
+          sendResponse({ ok: false, error: "请先填写你自己的 API Key。" });
+          return;
+        }
+
+        const data = await generateTimelineKeywordAnalysis({
+          payload: {
+            question: redactText(message.payload?.question || "")
+          },
+          settings
+        });
+
+        sendResponse({ ok: true, data });
+      } catch (error) {
         sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
       }
     })();

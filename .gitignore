@@ -1,5 +1,12 @@
 releases/
 server/data/
+.env
+.env.*
+*.log
+*.docx
+src/patch_*.py
+src/fix_menu.py
+src/hide_add_site.py
 assets/xhs_cover_*.png
 assets/xhs_cover_philosophy.md
 gen_xhs_cover.ps1

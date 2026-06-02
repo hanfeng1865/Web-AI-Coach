@@ -16,7 +16,7 @@
 
 1. 克隆或下载本仓库代码到你的本地电脑。
    ```bash
-   git clone https://github.com/你的用户名/Web-AI-Coach.git
+   git clone https://github.com/hanfeng1865/Web-AI-Coach.git
    ```
 2. 打开 Chrome 浏览器的扩展程序页面（在地址栏输入 `chrome://extensions/`）。
 3. 在页面右上角，开启 **“开发者模式” (Developer mode)** 开关。
@@ -41,6 +41,15 @@
 - **`src/ui.css`**: 全局轻量级的拟物+玻璃态美学 CSS 样式控制。
 
 你可以随意 fork 代码，修改 Prompt 根据自己的开发需求去增加任意一键逆推功能。
+
+### 本地检查
+
+```bash
+npm test
+npm run check
+```
+
+欢迎提交 Issue 和 Pull Request。协作细节见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 📄 开源协议
 

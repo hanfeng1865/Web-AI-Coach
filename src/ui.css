@@ -20,30 +20,30 @@
 .semrush-coach-root {
   position: fixed;
   right: 24px;
-  bottom: 96px;
+  bottom: 24px;
   z-index: 2147483000;
   font-family: "Manrope", "PingFang SC", "Microsoft YaHei", sans-serif;
   color: var(--semrush-coach-text);
 }
 
 .semrush-coach-bubble {
-  width: 58px;
-  height: 58px;
+  width: 48px;
+  height: 48px;
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 999px;
   background: var(--semrush-coach-primary);
   color: #f6f8f7;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  box-shadow: 0 16px 34px rgba(0, 77, 64, 0.22);
+  box-shadow: 0 12px 26px rgba(0, 77, 64, 0.20);
   cursor: pointer;
   transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
 }
 
 .semrush-coach-bubble:hover {
   transform: translateY(-1px);
-  box-shadow: 0 20px 38px rgba(0, 77, 64, 0.26);
+  box-shadow: 0 16px 30px rgba(0, 77, 64, 0.24);
 }
 
 .semrush-coach-bubble-active {
@@ -53,14 +53,14 @@
 .semrush-coach-panel {
   position: absolute;
   right: 0;
-  bottom: 76px;
-  width: 446px;
-  max-height: min(84vh, 860px);
+  bottom: 62px;
+  width: 420px;
+  max-height: min(calc(100vh - 120px), 760px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
-  gap: 16px;
-  padding: 20px;
-  border-radius: 24px;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
   background: var(--semrush-coach-panel-bg);
   border: 1px solid rgba(255, 255, 255, 0.78);
   box-shadow: var(--semrush-coach-shadow);
@@ -83,7 +83,7 @@
 }
 
 .semrush-coach-panel-expanded {
-  width: 472px;
+  width: 446px;
 }
 
 .semrush-coach-panel.semrush-coach-settings-view {
@@ -102,11 +102,11 @@
 
 .semrush-coach-ai-timeline {
   position: fixed;
-  top: 96px;
-  right: 18px;
-  bottom: 132px;
+  top: 84px;
+  right: var(--semrush-coach-ai-timeline-right, 14px);
+  bottom: 164px;
   z-index: 2147482900;
-  width: 56px;
+  width: 248px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -128,11 +128,13 @@
   top: 8px;
   bottom: 8px;
   left: 50%;
-  width: 4px;
+  width: 2px;
   transform: translateX(-50%);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.46);
-  box-shadow: inset 0 0 0 1px rgba(32, 49, 44, 0.06);
+  background: linear-gradient(180deg, rgba(48, 61, 58, 0.3), rgba(48, 61, 58, 0.16));
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.34),
+    0 0 0 2px rgba(16, 23, 22, 0.05);
 }
 
 .semrush-coach-ai-timeline-items {
@@ -141,34 +143,138 @@
   pointer-events: none;
 }
 
+.semrush-coach-ai-timeline-item {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  opacity: 0.84;
+}
+
+.semrush-coach-ai-timeline-item.is-active {
+  opacity: 1;
+}
+
+.semrush-coach-ai-timeline-keyword {
+  position: absolute;
+  top: var(--label-top, 0%);
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  max-width: 112px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(18, 24, 23, 0.58);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-align: center;
+  appearance: none;
+  height: 30px;
+  flex-wrap: nowrap !important;
+  white-space: nowrap !important;
+  word-break: keep-all;
+  writing-mode: horizontal-tb;
+  overflow-wrap: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 8px 24px rgba(9, 14, 13, 0.14);
+  transform-origin: right center;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.semrush-coach-ai-timeline-keyword.is-marked {
+  border-color: rgba(255, 213, 93, 0.5);
+  box-shadow:
+    0 10px 28px rgba(8, 26, 22, 0.18),
+    0 0 0 1px rgba(255, 213, 93, 0.18);
+}
+
+.semrush-coach-ai-timeline-keyword.is-marked::after {
+  content: "★";
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #ffd55d;
+  color: #3a2a00;
+  font-size: 10px;
+  line-height: 1;
+  box-shadow: 0 6px 14px rgba(255, 213, 93, 0.28);
+}
+
+.semrush-coach-ai-timeline-keyword-left {
+  right: calc(50% + 16px);
+}
+
+.semrush-coach-ai-timeline-keyword-right {
+  left: calc(50% + 16px);
+}
+
+.semrush-coach-ai-timeline-item.is-active .semrush-coach-ai-timeline-keyword {
+  background: rgba(19, 31, 29, 0.82);
+  border-color: rgba(108, 214, 192, 0.26);
+  color: rgba(240, 255, 251, 0.96);
+  box-shadow: 0 10px 28px rgba(8, 26, 22, 0.22);
+}
+
+.semrush-coach-ai-timeline-keyword:hover,
+.semrush-coach-ai-timeline-keyword:focus-visible {
+  background: rgba(19, 31, 29, 0.88);
+  border-color: rgba(125, 226, 205, 0.3);
+  color: rgba(248, 255, 253, 0.98);
+  box-shadow: 0 12px 30px rgba(8, 26, 22, 0.24);
+  outline: none;
+}
+
 .semrush-coach-ai-timeline-dot {
   position: absolute;
+  top: var(--dot-top, 0%);
   left: 50%;
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.95);
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
   border-radius: 999px;
-  background: rgba(115, 125, 122, 0.9);
-  box-shadow: 0 8px 20px rgba(18, 31, 28, 0.16);
-  transform: translate(-50%, -50%);
+  background: rgba(133, 144, 141, 0.84);
+  box-shadow: 0 6px 18px rgba(18, 31, 28, 0.12);
   cursor: pointer;
   pointer-events: auto;
-  transition: transform 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+  transform: translate(-50%, -50%);
+  transition: transform 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .semrush-coach-ai-timeline-dot:hover,
 .semrush-coach-ai-timeline-dot:focus-visible,
 .semrush-coach-ai-timeline-dot.is-active {
-  background: #0b7665;
-  box-shadow: 0 10px 26px rgba(11, 118, 101, 0.3);
-  transform: translate(-50%, -50%) scale(1.12);
+  background: #0c8b76;
+  border-color: rgba(228, 255, 249, 0.98);
+  box-shadow: 0 8px 24px rgba(12, 139, 118, 0.28);
+  transform: translate(-50%, -50%) scale(1.18);
   outline: none;
 }
 
 .semrush-coach-ai-timeline-preview {
   position: absolute;
   top: 8px;
-  right: 64px;
+  right: calc(100% + 16px);
   width: min(280px, calc(100vw - 120px));
   max-height: 220px;
   overflow: auto;
@@ -238,9 +344,30 @@
 }
 
 .semrush-coach-settings-toggle {
-  padding: 0 12px;
-  font-size: 12px;
-  font-weight: 600;
+  min-height: 38px;
+  padding: 0 14px;
+  background: var(--semrush-coach-primary);
+  color: #f5f8f6;
+  border-color: rgba(0, 77, 64, 0.34);
+  box-shadow: 0 10px 22px rgba(0, 77, 64, 0.16);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.semrush-coach-settings-toggle::before {
+  content: "API";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  min-width: 30px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .semrush-coach-settings-toggle,
@@ -249,9 +376,9 @@
 }
 
 .semrush-coach-settings-toggle-active {
-  background: var(--semrush-coach-primary-soft);
-  color: var(--semrush-coach-primary);
-  border-color: rgba(0, 77, 64, 0.16);
+  background: #006553;
+  color: #ffffff;
+  border-color: rgba(0, 77, 64, 0.4);
 }
 
 .semrush-coach-close {
@@ -455,12 +582,12 @@
   grid-row: 2;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
   padding-right: 4px;
-  padding-bottom: 32px;
+  padding-bottom: 12px;
   scroll-behavior: smooth;
   overscroll-behavior: contain;
 }
@@ -485,17 +612,17 @@
   display: grid;
   gap: 0;
   justify-items: center;
-  padding: 34px 8px 20px;
-  min-height: 260px;
+  padding: 16px 8px 8px;
+  min-height: 196px;
 }
 
 .semrush-coach-welcome-hero {
   position: relative;
-  width: 238px;
-  height: 238px;
+  width: 190px;
+  height: 190px;
   display: grid;
   place-items: center;
-  margin-top: 8px;
+  margin-top: 0;
 }
 
 .semrush-coach-welcome-orbit {
@@ -519,6 +646,7 @@
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid rgba(64, 78, 72, 0.08);
   box-shadow: 0 20px 42px rgba(18, 31, 28, 0.10);
+  transform: scale(0.88);
 }
 
 .semrush-coach-welcome-window::after {
@@ -570,11 +698,11 @@
 
 .semrush-coach-welcome-badge {
   position: absolute;
-  right: 22px;
-  bottom: 24px;
-  min-width: 52px;
-  height: 52px;
-  padding: 0 14px;
+  right: 14px;
+  bottom: 16px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -798,6 +926,10 @@
   display: none;
 }
 
+.semrush-coach-tools-item[data-tool="extract-ui"] {
+  display: none !important;
+}
+
 .semrush-coach-message-user {
   align-self: flex-end;
   max-width: 78%;
@@ -844,8 +976,8 @@
 .semrush-coach-form {
   grid-row: 4;
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px;
   border-radius: 8px;
   min-width: 0;
   margin-top: 4px;
@@ -853,7 +985,7 @@
 
 .semrush-coach-input {
   display: block;
-  min-height: 110px;
+  min-height: 96px;
   min-width: 0;
   line-height: 1.75;
   color: var(--semrush-coach-text);
@@ -1760,13 +1892,13 @@
 
   .semrush-coach-root {
     right: 12px;
-    bottom: 84px;
+    bottom: 16px;
   }
 
   .semrush-coach-panel,
   .semrush-coach-panel-expanded {
     width: min(94vw, 460px);
-    max-height: 86vh;
+    max-height: calc(100vh - 104px);
     padding: 16px;
   }
 
@@ -2032,6 +2164,70 @@
   justify-content: center;
   gap: 16px;
   padding: 0 20px 24px;
+}
+
+@media (max-height: 820px) {
+  .semrush-coach-root {
+    bottom: 16px;
+  }
+
+  .semrush-coach-panel,
+  .semrush-coach-panel-expanded {
+    bottom: 60px;
+    max-height: calc(100vh - 96px);
+  }
+
+  .semrush-coach-welcome-card {
+    padding-top: 8px;
+    min-height: 166px;
+  }
+
+  .semrush-coach-welcome-hero {
+    width: 164px;
+    height: 164px;
+  }
+
+  .semrush-coach-input {
+    min-height: 88px;
+  }
+}
+
+.semrush-coach-api-key-help-trigger {
+  border: 1px solid rgba(0, 77, 64, 0.16);
+  border-radius: 999px;
+  background: rgba(0, 77, 64, 0.08);
+  color: var(--semrush-coach-primary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  padding: 8px 10px;
+}
+
+.semrush-coach-api-key-help-trigger:hover {
+  background: rgba(0, 77, 64, 0.12);
+}
+
+.semrush-coach-api-key-help-dialog {
+  max-width: 520px;
+}
+
+.semrush-coach-api-key-help-body {
+  display: grid;
+  gap: 10px;
+}
+
+.semrush-coach-api-key-help-body p {
+  margin: 0;
+  color: var(--semrush-coach-text);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.semrush-coach-api-key-help-body a {
+  color: var(--semrush-coach-primary);
+  word-break: break-all;
 }
 
 .semrush-coach-project-assessment-btn-cancel,
