@@ -27,44 +27,36 @@
 }
 
 .semrush-coach-bubble {
-  width: 48px;
-  height: 48px;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-radius: 999px;
-  background: var(--semrush-coach-primary);
-  color: #f6f8f7;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  box-shadow: 0 12px 26px rgba(0, 77, 64, 0.20);
-  cursor: pointer;
-  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+  display: none !important;
 }
 
-.semrush-coach-bubble:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 16px 30px rgba(0, 77, 64, 0.24);
-}
-
-.semrush-coach-bubble-active {
-  transform: scale(0.97);
+.semrush-coach-panel,
+.semrush-coach-panel-expanded {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 20px 0 0 20px !important;
+  border-right: none !important;
+  box-shadow: -10px 0 40px rgba(18, 31, 28, 0.1) !important;
 }
 
 .semrush-coach-panel {
-  position: absolute;
-  right: 0;
-  bottom: 62px;
   width: 420px;
-  max-height: min(calc(100vh - 120px), 760px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 12px;
-  padding: 16px;
-  border-radius: 20px;
+  padding: 24px 20px;
   background: var(--semrush-coach-panel-bg);
   border: 1px solid rgba(255, 255, 255, 0.78);
-  box-shadow: var(--semrush-coach-shadow);
   backdrop-filter: blur(20px);
+  box-sizing: border-box;
+}
+
+.semrush-coach-panel-expanded {
+  width: 446px !important;
 }
 
 .semrush-coach-panel::before {
@@ -433,7 +425,7 @@
 }
 
 .semrush-coach-admin-only {
-  display: none !important;
+  /* display: none !important; */
 }
 
 .semrush-coach-settings-grid input[type="text"],
@@ -606,6 +598,8 @@
   border-radius: 8px;
   padding: 20px;
   text-align: left;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .semrush-coach-welcome-card {
@@ -752,6 +746,8 @@
 .semrush-coach-rich-content {
   display: grid;
   gap: 12px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .semrush-coach-rich-content p,
@@ -763,6 +759,7 @@
   font-weight: 500;
   line-height: 1.9;
   text-align: left;
+  overflow-wrap: anywhere;
 }
 
 .semrush-coach-rich-heading {
@@ -815,6 +812,7 @@
 
 .semrush-coach-rich-table-wrap {
   overflow-x: auto;
+  max-width: 100%;
   border-radius: 16px;
   border: 1px solid rgba(64, 78, 72, 0.08);
   background: rgba(255, 255, 255, 0.72);
@@ -835,6 +833,7 @@
   font-size: 13px;
   line-height: 1.7;
   vertical-align: top;
+  word-break: break-word;
 }
 
 .semrush-coach-rich-table th {
@@ -927,6 +926,14 @@
 }
 
 .semrush-coach-tools-item[data-tool="extract-ui"] {
+  display: none !important;
+}
+
+.semrush-coach-tools-item[data-tool="markdown"] {
+  display: none !important;
+}
+
+.semrush-coach-tools-item[data-tool="page-qr"] {
   display: none !important;
 }
 
@@ -2261,4 +2268,3 @@
 }
 
 .semrush-coach-masked-input { -webkit-text-security: disc; }
-

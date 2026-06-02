@@ -1,7 +1,7 @@
-﻿import { QUICK_PROMPTS } from "./knowledge.js";
+import { QUICK_PROMPTS } from "./knowledge.js";
 
 const DEFAULT_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
-const DEFAULT_MODEL = "qwen-vl-max-latest";
+const DEFAULT_MODEL = "qwen-vl-plus";
 const DEFAULT_TIMEOUT_MS = 180000;
 const DEFAULT_TRIAL_LIMIT = 15;
 const DEFAULT_TRIAL_API_URL = "";
@@ -54,8 +54,98 @@ function extractJsonBlock(text) {
   throw new Error("Model did not return JSON");
 }
 
-function safeParseModelJson(text) {
-  return JSON.parse(extractJsonBlock(text));
+function escapeJsonStringControls(value) {
+  return value.replace(/[\u0000-\u001f]/g, (char) => {
+    if (char === "\n") return "\\n";
+    if (char === "\r") return "\\r";
+    if (char === "\t") return "\\t";
+    return `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`;
+  });
+}
+
+function isEscapedAt(value, index) {
+  let slashCount = 0;
+  for (let i = index - 1; i >= 0 && value[i] === "\\"; i -= 1) {
+    slashCount += 1;
+  }
+  return slashCount % 2 === 1;
+}
+
+function escapeBareJsonStringQuotes(value) {
+  let escaped = "";
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i];
+    if (char === "\"" && !isEscapedAt(value, i)) {
+      escaped += "\\\"";
+    } else {
+      escaped += char;
+    }
+  }
+  return escaped;
+}
+
+function decodeJsonishString(value) {
+  const withoutClosingQuote = value.trimEnd().replace(/(?<!\\)"$/, "");
+  const cleaned = escapeBareJsonStringQuotes(escapeJsonStringControls(withoutClosingQuote));
+  try {
+    return JSON.parse(`"${cleaned}"`);
+  } catch {
+    return withoutClosingQuote
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t")
+      .replace(/\\"/g, "\"");
+  }
+}
+
+function parseStringFieldFromLooseJson(block, key, nextKey) {
+  const keyPattern = new RegExp(`"${key}"\\s*:\\s*"`);
+  const match = keyPattern.exec(block);
+  if (!match) {
+    return "";
+  }
+
+  const valueStart = match.index + match[0].length;
+  const delimiterPattern = nextKey
+    ? new RegExp(`,\\s*"${nextKey}"\\s*:`)
+    : /\s*}\s*$/;
+  const delimiterMatch = delimiterPattern.exec(block.slice(valueStart));
+  if (!delimiterMatch) {
+    return "";
+  }
+
+  return decodeJsonishString(block.slice(valueStart, valueStart + delimiterMatch.index));
+}
+
+function repairPageSummaryJson(block) {
+  const requiredKeys = ["pageSummary", "summaryMarkdown", "mindmapMermaid"];
+  if (!requiredKeys.every((key) => block.includes(`"${key}"`))) {
+    return null;
+  }
+
+  return {
+    pageSummary: parseStringFieldFromLooseJson(block, "pageSummary", "summaryMarkdown"),
+    summaryMarkdown: parseStringFieldFromLooseJson(block, "summaryMarkdown", "mindmapMermaid"),
+    mindmapMermaid: parseStringFieldFromLooseJson(block, "mindmapMermaid", null)
+  };
+}
+
+export function safeParseModelJson(text) {
+  const block = extractJsonBlock(text);
+  try {
+    return JSON.parse(block);
+  } catch (e) {
+    try {
+      const cleaned = escapeJsonStringControls(block);
+      return JSON.parse(cleaned);
+    } catch (err) {
+      const repairedPageSummary = repairPageSummaryJson(block);
+      if (repairedPageSummary) {
+        return repairedPageSummary;
+      }
+      throw e;
+    }
+  }
 }
 
 function hasDirectRemoteSettings(settings) {
@@ -604,10 +694,11 @@ const PAGE_SUMMARY_SYSTEM_PROMPT = [
   "2. summaryMarkdown 必须是清晰的 Markdown，至少包含：页面主题、核心观点、方法论/框架、实操技巧、易忽略细节、行动建议。",
   "3. summaryMarkdown 中必须包含项目符号列表，并至少包含 1 个 Markdown 表格。",
   "4. 如果页面信息不足，不要编造；要明确写出哪些内容是页面明确提到的，哪些只是谨慎推断。",
-  "5. mindmapMermaid 必须是 Mermaid mindmap 语法，可直接复制渲染。",
-  "6. 脑图根节点应是页面主题，向下展开 3-5 个一级分支，每个一级分支下再展开关键要点或技巧。",
-  "7. 脑图尽量克制：总节点不超过 18 个，层级不超过 3 层，每个一级分支最多 4 个子点。",
-  "8. 只返回 JSON，不要加代码块。",
+  "5. mindmapMermaid 必须且只能使用 Mermaid mindmap 语法，以 mindmap 开头，第二行必须是 root((页面主题))。",
+  "6. 禁止输出 graph TD、flowchart、A-->B、节点 ID、箭头、方括号节点语法；节点文本必须是给普通用户看的中文短语。",
+  "7. 脑图根节点应是页面主题，向下展开 3-5 个一级分支，每个一级分支下再展开关键要点或技巧。",
+  "8. 脑图尽量克制：总节点不超过 18 个，层级不超过 3 层，每个一级分支最多 4 个子点。",
+  "9. 只返回严格 JSON，不要加代码块；三个字段的值都必须是合法 JSON 字符串，Markdown/Mermaid 里的换行必须写成 \\n，双引号必须转义成 \\\"。",
   'Schema: {"pageSummary":"string","summaryMarkdown":"string","mindmapMermaid":"string"}'
 ].join("\n");
 

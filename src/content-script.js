@@ -30,7 +30,7 @@
     trialApiUrl: "",
     freeTrialLimit: 15,
     apiUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-    model: "qwen-vl-max",
+    model: "qwen-vl-plus",
     apiKey: "",
     fallbackToLocal: true,
     aiTimelineEnabled: true,
@@ -43,6 +43,11 @@
   ].join("\n");
 
   const QUICK_PROMPTS = [];
+  const TOOL_TASK_TRIGGERS = [
+    "🧠 请帮我总结当前页面并同步生成脑图",
+    "📄 生成当前网页的产品需求文档 (PRD)",
+    "项目评估："
+  ];
 
   const state = {
     open: false,
@@ -105,7 +110,7 @@
         <div class="semrush-coach-settings-grid">
           <label class="semrush-coach-setting-full semrush-coach-admin-only">
             <span>体验服务地址</span>
-            <input class="semrush-coach-setting-trial-api-url" type="text" placeholder="https://your-domain.com/api/trial" />
+            <input class="semrush-coach-setting-trial-api-url" type="text" placeholder="使用个人 Key 直连时，请保持此处完全空白" />
           </label>
           <label class="semrush-coach-setting-full semrush-coach-admin-only">
             <span>服务商</span>
@@ -471,13 +476,13 @@
   }
   toolsMenuEl?.querySelector('[data-tool="selection-analysis"]')?.remove();
   toolsMenuEl?.querySelector('[data-tool="extract-ui"]')?.remove();
+  toolsMenuEl?.querySelector('[data-tool="markdown"]')?.remove();
+  toolsMenuEl?.querySelector('[data-tool="page-qr"]')?.remove();
   const toolMenuOrder = [
     "project-assessment",
     "compare-page",
     "generate-prd",
-    "markdown",
-    "long-screenshot",
-    "page-qr"
+    "long-screenshot"
   ];
   if (toolsMenuEl instanceof HTMLElement) {
     const orderedItems = toolMenuOrder
@@ -1407,16 +1412,54 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   function scrollHistoryToBottom() {
     window.requestAnimationFrame(() => {
       if (!historyEl) return;
-      
-      // 优先直接设置 scrollTop 确保到达物理底部
       historyEl.scrollTop = historyEl.scrollHeight;
-      
-      // 针对进度条卡片进行视口校准
-      const lastItem = historyEl.lastElementChild;
-      if (lastItem instanceof HTMLElement) {
-        lastItem.scrollIntoView({ block: "end", inline: "nearest", behavior: "smooth" });
-      }
     });
+  }
+
+  function scrollHistoryToIndex(index, block = "start") {
+    window.requestAnimationFrame(() => {
+      const target = historyEl?.querySelector(`[data-history-index="${index}"]`);
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const offset = block === "end"
+        ? target.offsetTop + target.offsetHeight - historyEl.clientHeight
+        : target.offsetTop;
+      historyEl.scrollTo({
+        top: Math.max(0, offset - 8),
+        behavior: "smooth"
+      });
+    });
+  }
+
+  function isToolTaskEntry(item) {
+    if (!item || item.role !== "user") {
+      return false;
+    }
+    const text = String(item.text || "");
+    return TOOL_TASK_TRIGGERS.some((trigger) => text.startsWith(trigger));
+  }
+
+  function clearPreviousToolTask() {
+    let previousTaskStartIndex = -1;
+    for (let index = state.history.length - 1; index >= 0; index -= 1) {
+      if (isToolTaskEntry(state.history[index])) {
+        previousTaskStartIndex = index;
+        break;
+      }
+    }
+    if (previousTaskStartIndex >= 0) {
+      state.history = state.history.slice(0, previousTaskStartIndex);
+    }
+  }
+
+  function startToolTaskMessage(text) {
+    clearPreviousToolTask();
+    state.history.push({
+      role: "user",
+      text
+    });
+    renderHistory();
   }
 
   function wait(ms) {
@@ -1997,39 +2040,178 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   }
 
   function parseMindmapLabel(line) {
-    const trimmed = String(line || "").trim();
+    let trimmed = String(line || "")
+      .trim()
+      .replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "");
     if (!trimmed) {
       return "";
     }
 
     if (/^root\b/i.test(trimmed)) {
-      const match = trimmed.match(/^root(?:\((.+)\)|\s+(.+))$/i);
-      return (match?.[1] || match?.[2] || "主题").trim();
+      trimmed = trimmed.replace(/^root\s*/i, "").trim() || "主题";
     }
 
-    const parenMatch = trimmed.match(/^[a-z0-9_-]+\((.+)\)$/i);
-    if (parenMatch?.[1]) {
-      return parenMatch[1].trim();
+    const shapeMatch = trimmed.match(/^[a-z0-9_-]+\s*(.+)$/i);
+    if (shapeMatch?.[1] && /^[([{]/.test(shapeMatch[1].trim())) {
+      trimmed = shapeMatch[1].trim();
+    }
+
+    for (let i = 0; i < 3; i += 1) {
+      const wrapped = trimmed.match(/^\(\((.+)\)\)$|^\((.+)\)$|^\[\[(.+)\]\]$|^\[(.+)\]$|^\{\{(.+)\}\}$/);
+      const next = wrapped?.slice(1).find((value) => value);
+      if (!next) {
+        break;
+      }
+      trimmed = next.trim();
     }
 
     return trimmed
       .replace(/^[|丨│┆┊└├─—•·:：\-*#\s]+/, "")
+      .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
       .replace(/\s+/g, " ")
       .trim();
   }
 
+  function parseFlowchartNodeLabel(raw) {
+    const value = String(raw || "").trim();
+    if (!value) {
+      return "";
+    }
+
+    const labelMatch = value.match(/^[a-z0-9_-]+\s*(?:\[\[(.+?)\]\]|\[(.+?)\]|\(\((.+?)\)\)|\((.+?)\)|\{\{(.+?)\}\}|["'](.+?)["'])\s*$/i);
+    const label = labelMatch?.slice(1).find((part) => part);
+    if (label) {
+      return parseMindmapLabel(label);
+    }
+
+    return parseMindmapLabel(value.replace(/^[a-z0-9_-]+\s*$/i, ""));
+  }
+
+  function parseFlowchartMindmap(source) {
+    const lines = String(source || "")
+      .replace(/```mermaid|```/gi, "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !/^(graph|flowchart)\b/i.test(line));
+
+    const nodeLabels = new Map();
+    const childIds = new Set();
+    const adjacency = new Map();
+    const nodeOrder = [];
+    const edgePattern = /^([a-z0-9_-]+)(?:\s*(?:\[\[.+?\]\]|\[.+?\]|\(\(.+?\)\)|\(.+?\)|\{\{.+?\}\}|["'].+?["']))?\s*[-.=]+(?:->|>)\s*([a-z0-9_-]+(?:\s*(?:\[\[.+?\]\]|\[.+?\]|\(\(.+?\)\)|\(.+?\)|\{\{.+?\}\}|["'].+?["']))?)/i;
+
+    const rememberNode = (id, rawLabel = "") => {
+      if (!id) {
+        return;
+      }
+      if (!nodeOrder.includes(id)) {
+        nodeOrder.push(id);
+      }
+      const label = parseFlowchartNodeLabel(rawLabel);
+      if (label) {
+        nodeLabels.set(id, label);
+      } else if (!nodeLabels.has(id)) {
+        nodeLabels.set(id, id);
+      }
+    };
+
+    lines.forEach((line) => {
+      const cleaned = line.replace(/;$/, "");
+      const edgeMatch = cleaned.match(edgePattern);
+      if (!edgeMatch) {
+        const nodeMatch = cleaned.match(/^([a-z0-9_-]+)\s*(.+)$/i);
+        if (nodeMatch) {
+          rememberNode(nodeMatch[1], cleaned);
+        }
+        return;
+      }
+
+      const fromId = edgeMatch[1];
+      const toRaw = edgeMatch[2].trim();
+      const toId = toRaw.match(/^([a-z0-9_-]+)/i)?.[1] || "";
+      rememberNode(fromId);
+      rememberNode(toId, toRaw);
+      childIds.add(toId);
+      if (!adjacency.has(fromId)) {
+        adjacency.set(fromId, []);
+      }
+      adjacency.get(fromId).push(toId);
+    });
+
+    if (!nodeOrder.length) {
+      return null;
+    }
+
+    const rootId = nodeOrder.find((id) => adjacency.has(id) && !childIds.has(id)) || nodeOrder[0];
+    const rootLabel = nodeLabels.get(rootId) || "";
+    const root = {
+      label: rootLabel && rootLabel !== rootId ? rootLabel : "页面主题",
+      children: []
+    };
+    const visited = new Set([rootId]);
+
+    const buildChildren = (parentId, parentNode, depth = 0) => {
+      if (depth >= 2) {
+        return;
+      }
+      const children = adjacency.get(parentId) || [];
+      children.slice(0, depth === 0 ? 6 : 4).forEach((childId) => {
+        if (visited.has(childId)) {
+          return;
+        }
+        visited.add(childId);
+        const node = {
+          label: nodeLabels.get(childId) || childId,
+          children: []
+        };
+        parentNode.children.push(node);
+        buildChildren(childId, node, depth + 1);
+      });
+    };
+
+    buildChildren(rootId, root);
+    for (const id of nodeOrder) {
+      if (root.children.length >= 8) {
+        break;
+      }
+      if (id === rootId || visited.has(id)) {
+        continue;
+      }
+      const label = nodeLabels.get(id) || "";
+      const node = {
+        label: label && label !== id ? label : "关键要点",
+        children: []
+      };
+      visited.add(id);
+      buildChildren(id, node, 1);
+      if (node.label !== "关键要点" || node.children.length) {
+        root.children.push(node);
+      }
+    }
+
+    return root;
+  }
+
   function parseMindmapMermaid(source) {
+    if (/^\s*(?:```\s*mermaid\s*)?(graph|flowchart)\b/im.test(String(source || ""))) {
+      return parseFlowchartMindmap(source);
+    }
+
     const lines = String(source || "")
       .replace(/```mermaid|```/gi, "")
       .split("\n")
       .map((line) => line.replace(/\t/g, "  "))
       .filter((line) => line.trim());
 
-    const rootLineIndex = lines.findIndex((line) => /^root\b/i.test(line.trim()));
+    let rootLineIndex = lines.findIndex((line) => /^root\b/i.test(line.trim()));
+    if (rootLineIndex < 0) {
+      rootLineIndex = lines.findIndex((line) => !/^mindmap$/i.test(line.trim()));
+    }
     if (rootLineIndex < 0) {
       return null;
     }
 
+    const rootIndent = lines[rootLineIndex].match(/^ */)?.[0].length || 0;
     const root = {
       label: parseMindmapLabel(lines[rootLineIndex]),
       children: []
@@ -2042,7 +2224,8 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
         continue;
       }
 
-      const depth = Math.max(0, Math.floor((rawLine.match(/^ */)?.[0].length || 0) / 2));
+      const indent = rawLine.match(/^ */)?.[0].length || 0;
+      const depth = Math.max(0, Math.floor((indent - rootIndent) / 2) - 1);
       const node = {
         label: parseMindmapLabel(trimmed),
         children: []
@@ -2841,7 +3024,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     }
 
     historyEl.innerHTML = state.history
-      .map((item) => {
+      .map((item, index) => {
         if (item.role === "user") {
           const preview = item.attachment?.dataUrl
             ? `
@@ -2856,7 +3039,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
             : "";
 
           return `
-            <article class="semrush-coach-message semrush-coach-message-user">
+            <article class="semrush-coach-message semrush-coach-message-user" data-history-index="${index}">
               <div>${escapeHtml(item.text)}</div>
               ${preview}
             </article>
@@ -2907,7 +3090,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
               : `<button class="semrush-coach-copy-btn" data-answer="${encodedAnswer}" title="一键复制">复制</button>`;
 
         return `
-          <article class="semrush-coach-card">
+          <article class="semrush-coach-card" data-history-index="${index}">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap: 8px;">
               <p class="semrush-coach-card-title" style="margin:0;">${escapeHtml(item.pageSummary || "当前页面")}</p>
               ${actionButton}
@@ -3728,7 +3911,74 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     return Array.from(document.querySelectorAll("h1, h2, h3, p, li, blockquote, pre")).filter(isVisibleFocusNode);
   }
 
-  function getFocusContainerScore(element, matchedNodes) {
+  function getRectIntersectionArea(a, b) {
+    const left = Math.max(a.left, b.left);
+    const right = Math.min(a.right, b.right);
+    const top = Math.max(a.top, b.top);
+    const bottom = Math.min(a.bottom, b.bottom);
+    return Math.max(0, right - left) * Math.max(0, bottom - top);
+  }
+
+  function isFocusNoiseNode(element) {
+    if (!(element instanceof HTMLElement)) {
+      return true;
+    }
+
+    if (element.closest([
+      "header",
+      "nav",
+      "footer",
+      "aside",
+      "[role='navigation']",
+      "[role='complementary']",
+      "[role='contentinfo']"
+    ].join(","))) {
+      return true;
+    }
+
+    const context = [];
+    let current = element;
+    let depth = 0;
+    while (current && current !== document.body && depth < 6) {
+      context.push(`${current.id || ""} ${current.className || ""}`);
+      current = current.parentElement;
+      depth += 1;
+    }
+    const contextText = context.join(" ").toLowerCase();
+    if (/nav|menu|header|footer|aside|sidebar|recommend|related|hot|rank|comment|login|search|share|qrcode|qr-code|copyright|beian|备案|公众号|下载|app|推荐|最新文章|热门|评论|举报|二维码/.test(contextText)) {
+      return true;
+    }
+
+    const text = (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+    if (!text) {
+      return true;
+    }
+    if (isFocusNoiseText(text)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  function isFocusArticleStopText(text) {
+    return /^\[?免责声明\]?|推荐文章|最新文章|关注\s*36氪企服点评|商务合作|热门推荐|联系我们|打开微信扫一扫/.test(String(text || "").trim());
+  }
+
+  function isFocusNoiseText(text) {
+    const value = String(text || "").replace(/\s+/g, " ").trim();
+    if (!value) {
+      return true;
+    }
+    if (/^(首页|软件分类|排行榜|案例库|资讯|直播|AI测评网|公众号|APP|登录|搜索|商务合作|热门推荐|热门文章|推荐文章|\+ 关注|关注|分享|查看更多)$/.test(value)) {
+      return true;
+    }
+    if (/京公网安备|ICP备|未经许可，禁止转载|本文作者原创发布于|©|Copyright|二维码|扫码/.test(value)) {
+      return true;
+    }
+    return false;
+  }
+
+  function getFocusContainerScore(element, matchedNodes, selectionRect = null) {
     if (!(element instanceof HTMLElement) || !matchedNodes.length) {
       return -1;
     }
@@ -3742,6 +3992,10 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     const role = (element.getAttribute("role") || "").toLowerCase();
     const className = (element.className || "").toString().toLowerCase();
     const id = (element.id || "").toLowerCase();
+    const linkTextLength = Array.from(element.querySelectorAll("a"))
+      .reduce((sum, link) => sum + ((link.innerText || link.textContent || "").replace(/\s+/g, " ").trim().length), 0);
+    const linkDensityPenalty = text.length ? Math.min(180, (linkTextLength / text.length) * 180) : 0;
+    const noisePenalty = /nav|menu|header|footer|aside|sidebar|recommend|related|hot|rank|comment|search|share|qrcode|qr-code|推荐|最新文章|热门|评论|二维码/.test(`${className} ${id}`) ? 160 : 0;
     const semanticBonus =
       (tag === "article" ? 80 : 0) +
       (tag === "main" ? 60 : 0) +
@@ -3756,10 +4010,13 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
 
     const ownRect = element.getBoundingClientRect();
     const areaPenalty = Math.min((ownRect.width * ownRect.height) / 50000, 120);
-    return semanticBonus + matchedCount * 35 + Math.min(text.length / 120, 45) - areaPenalty;
+    const selectionBonus = selectionRect
+      ? Math.min(160, getRectIntersectionArea(ownRect, selectionRect) / Math.max(1, selectionRect.width * selectionRect.height) * 180)
+      : 0;
+    return semanticBonus + selectionBonus + matchedCount * 35 + Math.min(text.length / 120, 45) - areaPenalty - linkDensityPenalty - noisePenalty;
   }
 
-  function findBestFocusContainer(matchedNodes) {
+  function findBestFocusContainer(matchedNodes, selectionRect = null) {
     if (!matchedNodes.length) {
       return null;
     }
@@ -3783,7 +4040,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     let best = null;
     let bestScore = -1;
     candidates.forEach((candidate) => {
-      const score = getFocusContainerScore(candidate, matchedNodes);
+      const score = getFocusContainerScore(candidate, matchedNodes, selectionRect);
       if (score > bestScore) {
         best = candidate;
         bestScore = score;
@@ -3793,18 +4050,133 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     return best;
   }
 
-  function buildFocusContent(selectionRect) {
-    const allContentNodes = getFocusContentNodes();
-    const matchedNodes = allContentNodes.filter((node) => rectsIntersect(selectionRect, node.getBoundingClientRect()));
-    const bestContainer = findBestFocusContainer(matchedNodes);
-    const candidates = bestContainer
-      ? allContentNodes.filter((node) => bestContainer.contains(node))
-      : allContentNodes;
+  function compactFocusSentence(text, maxLength = 54) {
+    const normalized = String(text || "")
+      .replace(/\s+/g, " ")
+      .replace(/^[“"'‘’]+|[”"'‘’]+$/g, "")
+      .trim();
+    if (!normalized) {
+      return "";
+    }
+    const firstSentence = normalized.split(/(?<=[。！？!?；;])\s*/)[0] || normalized;
+    return firstSentence.length > maxLength ? `${firstSentence.slice(0, maxLength)}…` : firstSentence;
+  }
+
+  function inferFocusPointFromText(text) {
+    const source = String(text || "").replace(/\s+/g, " ").trim();
+    if (!source) {
+      return null;
+    }
+
+    const rules = [
+      {
+        test: /能力圈|边界|知止|不能做什么/,
+        title: "明确能力边界",
+        body: "先判断能做什么、不能做什么，再决定业务取舍。"
+      },
+      {
+        test: /客户|资质|申请|代办|接单|什么业务都能接/,
+        title: "警惕能力圈外需求",
+        body: "看似能接的需求，如果缺少经验和资质，容易变成风险。"
+      },
+      {
+        test: /代价|损失|踩坑|教训|风险/,
+        title: "盲目扩张会付出代价",
+        body: "不清楚边界时做承诺，后续补课成本会被放大。"
+      },
+      {
+        test: /经验|模型|方法|管理|系统/,
+        title: "把经验沉淀成模型",
+        body: "将个案复盘成判断框架，才能稳定指导下一次决策。"
+      },
+      {
+        test: /核心竞争力|竞争力|优势/,
+        title: "聚焦真正的竞争力",
+        body: "竞争力不是覆盖所有事，而是持续强化自己擅长的事。"
+      }
+    ];
+
+    const matched = rules.find((rule) => rule.test.test(source));
+    if (matched) {
+      return matched;
+    }
+
+    const title = compactFocusSentence(source, 18).replace(/[。！？!?；;，,：:].*$/, "");
+    return {
+      title: title || "关键判断",
+      body: compactFocusSentence(source, 56)
+    };
+  }
+
+  function buildFocusKeyPoints(items, heading) {
+    const points = [];
     const seen = new Set();
-    const blocks = [];
+    const addPoint = (point) => {
+      if (!point?.title || seen.has(point.title)) {
+        return;
+      }
+      seen.add(point.title);
+      points.push({
+        title: point.title,
+        body: point.body || ""
+      });
+    };
+
+    items.forEach((item, index) => {
+      if (points.length >= 4) {
+        return;
+      }
+      if (/^h[1-3]$/.test(item.tag) && item.text !== heading) {
+        const nextParagraph = items.slice(index + 1).find((entry) => entry.tag === "p" && entry.text.length >= 24);
+        addPoint({
+          title: compactFocusSentence(item.text, 20),
+          body: compactFocusSentence(nextParagraph?.text || item.text, 52)
+        });
+      }
+    });
+
+    items.forEach((item) => {
+      if (points.length >= 4) {
+        return;
+      }
+      if (item.tag === "p" && item.text.length >= 24) {
+        addPoint(inferFocusPointFromText(item.text));
+      }
+    });
+
+    return points.slice(0, 4);
+  }
+
+  function buildFocusContent(selectionRect) {
+    const allContentNodes = getFocusContentNodes().filter((node) => !isFocusNoiseNode(node));
+    const matchedNodes = allContentNodes.filter((node) => rectsIntersect(selectionRect, node.getBoundingClientRect()));
+    const bestContainer = findBestFocusContainer(matchedNodes, selectionRect);
+    let candidates = bestContainer
+      ? allContentNodes.filter((node) => bestContainer.contains(node) && !isFocusNoiseNode(node))
+      : allContentNodes;
+    const selectedHeadingIndex = candidates.findIndex((node) => {
+      if (!/^h[1-3]$/i.test(node.tagName)) {
+        return false;
+      }
+      return rectsIntersect(selectionRect, node.getBoundingClientRect());
+    });
+    const firstHeadingIndex = selectedHeadingIndex >= 0
+      ? selectedHeadingIndex
+      : candidates.findIndex((node) => /^h[1-3]$/i.test(node.tagName));
+    if (firstHeadingIndex > 0) {
+      candidates = candidates.slice(firstHeadingIndex);
+    }
+    const seen = new Set();
+    let blocks = [];
+    let plainBlocks = [];
+    let contentItems = [];
     let heading = "";
+    let reachedArticleEnd = false;
 
     candidates.forEach((node) => {
+      if (reachedArticleEnd) {
+        return;
+      }
       const rect = node.getBoundingClientRect();
       if (!bestContainer && !rectsIntersect(selectionRect, rect)) {
         return;
@@ -3814,9 +4186,18 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       if (!text || seen.has(text)) {
         return;
       }
+      if (isFocusArticleStopText(text)) {
+        reachedArticleEnd = true;
+        return;
+      }
+      if (isFocusNoiseText(text)) {
+        return;
+      }
       seen.add(text);
+      plainBlocks.push(text);
 
       const tag = node.tagName.toLowerCase();
+      contentItems.push({ tag, text });
       if (!heading && /^h[1-3]$/.test(tag)) {
         heading = text;
       }
@@ -3844,13 +4225,77 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       blocks.push(`<p>${escapeHtml(text)}</p>`);
     });
 
+    if (plainBlocks.join(" ").length < 220 && bestContainer instanceof HTMLElement) {
+      const fallbackLines = (bestContainer.innerText || "")
+        .split(/\n+/)
+        .map((line) => line.replace(/\s+/g, " ").trim())
+        .flatMap((line) => {
+          if (line.length <= 260) {
+            return [line];
+          }
+          return line
+            .split(/(?<=[。！？!?])\s*/)
+            .map((part) => part.trim())
+            .filter(Boolean);
+        })
+        .filter(Boolean);
+      const nextBlocks = [];
+      const nextPlainBlocks = [];
+      const nextItems = [];
+      const nextSeen = new Set();
+      let fallbackReachedEnd = false;
+
+      fallbackLines.forEach((line) => {
+        if (fallbackReachedEnd || nextSeen.has(line)) {
+          return;
+        }
+        if (isFocusArticleStopText(line)) {
+          fallbackReachedEnd = true;
+          return;
+        }
+        if (isFocusNoiseText(line)) {
+          return;
+        }
+        nextSeen.add(line);
+        const isTitleLine = !nextPlainBlocks.length && line === (heading || line);
+        nextPlainBlocks.push(line);
+        nextItems.push({ tag: isTitleLine ? "h2" : "p", text: line });
+        nextBlocks.push(isTitleLine ? `<h2>${escapeHtml(line)}</h2>` : `<p>${escapeHtml(line)}</p>`);
+      });
+
+      if (nextPlainBlocks.join(" ").length > plainBlocks.join(" ").length) {
+        blocks = nextBlocks;
+        plainBlocks = nextPlainBlocks;
+        contentItems = nextItems;
+        heading = heading || nextPlainBlocks[0] || "";
+      }
+    }
+
     const html = blocks
       .join("")
       .replace(/(<li>.*?<\/li>)+/g, (match) => `<ul>${match}</ul>`);
 
+    const readableText = plainBlocks.join(" ");
+    const summary = compactFocusSentence(
+      plainBlocks.find((text) => text.length >= 48 && text !== heading) || readableText,
+      96
+    );
+    const keyPoints = buildFocusKeyPoints(contentItems, heading);
+    const titleWords = (heading || document.title || "")
+      .split(/[｜|,，、\s]+/)
+      .map((item) => item.trim())
+      .filter((item) => item && item.length <= 8)
+      .slice(0, 4);
+    const tags = titleWords;
+    const readMinutes = Math.max(1, Math.ceil(readableText.length / 500));
+
     return {
       title: heading || document.title || "专注阅读",
-      html
+      html,
+      summary,
+      keyPoints,
+      tags,
+      readMinutes
     };
   }
 
@@ -3896,6 +4341,19 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     const shadow = host.attachShadow({ mode: "open" });
     const currentTheme = state.focusMode.theme === "light" ? "light" : "dark";
     state.focusMode.theme = currentTheme;
+    const focusTagsHtml = (content.tags || [])
+      .slice(0, 4)
+      .map((tag) => `<span>${escapeHtml(tag)}</span>`)
+      .join("");
+    const focusKeyPointsHtml = (content.keyPoints || [])
+      .slice(0, 4)
+      .map((point, index) => `
+        <li>
+          <span class="focus-key-icon">${index + 1}</span>
+          <p><strong>${escapeHtml(point.title || point)}</strong>${point.body ? `<span>${escapeHtml(point.body)}</span>` : ""}</p>
+        </li>
+      `)
+      .join("");
     shadow.innerHTML = `
       <style>
         .focus-shell {
@@ -3982,13 +4440,34 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
         }
 
         .focus-shell[data-theme="light"] {
-          --focus-bg: #f7f9f9;
-          --focus-text: #1a1a1b;
-          --focus-text-soft: rgba(0, 0, 0, 0.6);
-          --focus-toolbar-bg: rgba(247, 249, 249, 0.85);
-          --focus-toolbar-border: rgba(0, 0, 0, 0.05);
-          --focus-button-secondary-bg: rgba(0, 0, 0, 0.03);
-          --focus-button-secondary-border: rgba(0, 0, 0, 0.1);
+          --focus-bg: #f4f7f5;
+          --focus-text: #17211d;
+          --focus-text-soft: #53635e;
+          --focus-toolbar-bg: rgba(247, 250, 248, 0.94);
+          --focus-toolbar-border: rgba(23, 33, 29, 0.1);
+          --focus-button-secondary-bg: rgba(23, 33, 29, 0.06);
+          --focus-button-secondary-border: rgba(23, 33, 29, 0.14);
+          --focus-pre-bg: rgba(23, 33, 29, 0.06);
+          background:
+            radial-gradient(circle at 50% -12%, rgba(0, 156, 106, 0.08), transparent 34%),
+            radial-gradient(circle at 86% 24%, rgba(156, 215, 255, 0.34), transparent 28%),
+            radial-gradient(circle at 20% 92%, rgba(255, 255, 255, 0.72), transparent 30%),
+            linear-gradient(135deg, #eaf7ff 0%, #f7fbff 46%, #dbeeff 100%);
+        }
+
+        .focus-shell[data-theme="dark"] {
+          --focus-bg: #06111a;
+          --focus-text: #e9f4ff;
+          --focus-text-soft: #8ea5ba;
+          --focus-toolbar-bg: rgba(6, 17, 26, 0.58);
+          --focus-toolbar-border: rgba(119, 190, 255, 0.12);
+          --focus-button-secondary-bg: rgba(145, 201, 255, 0.08);
+          --focus-button-secondary-border: rgba(145, 201, 255, 0.16);
+          --focus-pre-bg: rgba(145, 201, 255, 0.08);
+          background:
+            radial-gradient(circle at 84% 6%, rgba(36, 144, 255, 0.24), transparent 24%),
+            radial-gradient(circle at 8% 88%, rgba(15, 214, 184, 0.12), transparent 28%),
+            linear-gradient(135deg, #06131d 0%, #07131c 48%, #02070b 100%);
         }
 
         .focus-shell[data-theme="glass"] {
@@ -4036,6 +4515,16 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           display: none;
         }
 
+        .focus-shell[data-theme="light"] #rain-canvas {
+          opacity: 0.12;
+          filter: none;
+        }
+
+        .focus-shell[data-theme="dark"] #rain-canvas {
+          opacity: 0.18;
+          filter: drop-shadow(0 0 5px rgba(81, 180, 255, 0.22));
+        }
+
         .focus-toolbar {
           position: sticky;
           top: 0;
@@ -4058,7 +4547,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
         }
 
         .focus-shell[data-theme="light"] .focus-toolbar strong {
-          color: #009c6a;
+          color: #153453;
           text-shadow: none;
         }
 
@@ -4094,6 +4583,432 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           box-sizing: border-box;
         }
 
+        .focus-stage {
+          position: relative;
+          z-index: 5;
+        }
+
+        .focus-title {
+          margin: 0 0 42px;
+          color: var(--focus-text);
+          font-size: clamp(34px, 4vw, 54px);
+          line-height: 1.35;
+          font-weight: 850;
+          letter-spacing: -0.03em;
+        }
+
+        .focus-body {
+          color: var(--focus-text);
+        }
+
+        .focus-body h2 {
+          margin: 54px 0 20px;
+          color: var(--focus-text);
+          font-size: 28px;
+          line-height: 1.45;
+          font-weight: 800;
+          letter-spacing: -0.015em;
+        }
+
+        .focus-body p,
+        .focus-body li,
+        .focus-body blockquote,
+        .focus-body pre {
+          color: var(--focus-text);
+          text-shadow: none;
+        }
+
+        .focus-body p {
+          margin: 0 0 24px;
+        }
+
+        .focus-body ul {
+          margin: 0 0 28px;
+          padding-left: 1.35em;
+        }
+
+        .focus-body blockquote {
+          margin: 32px 0;
+          padding: 18px 22px;
+          border-left: 4px solid rgba(0, 255, 163, 0.44);
+          background: rgba(255, 255, 255, 0.04);
+          border-radius: 16px;
+        }
+
+        .focus-body pre {
+          margin: 28px 0;
+          padding: 18px 20px;
+          overflow: auto;
+          border-radius: 16px;
+          background: var(--focus-pre-bg);
+          white-space: pre-wrap;
+        }
+
+        .focus-shell[data-theme="light"] .focus-content,
+        .focus-shell[data-theme="dark"] .focus-content {
+          max-width: none;
+          margin: 0;
+          padding: 0;
+          border-radius: 0;
+          background: transparent;
+          border: 0;
+          box-shadow: none;
+        }
+
+        .focus-shell[data-theme="light"] .focus-title,
+        .focus-shell[data-theme="light"] .focus-body,
+        .focus-shell[data-theme="light"] .focus-body * {
+          color: #17211d !important;
+          -webkit-text-fill-color: #17211d;
+          text-shadow: none !important;
+        }
+
+        .focus-shell[data-theme="light"] .focus-body blockquote {
+          background: rgba(0, 77, 64, 0.05);
+          border-left-color: rgba(0, 115, 91, 0.42);
+        }
+
+        .focus-meta,
+        .focus-tags,
+        .focus-aside {
+          display: none;
+        }
+
+        .focus-shell[data-theme="light"] .focus-toolbar,
+        .focus-shell[data-theme="dark"] .focus-toolbar {
+          position: sticky;
+          top: 0;
+          max-width: 1180px;
+          margin: 10px auto 0;
+          padding: 28px 44px 10px;
+          background: transparent;
+          border-bottom: 0;
+          backdrop-filter: none;
+          justify-content: flex-end;
+        }
+
+        .focus-shell[data-theme="light"] .focus-actions,
+        .focus-shell[data-theme="dark"] .focus-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .focus-shell[data-theme="light"] .focus-button,
+        .focus-shell[data-theme="dark"] .focus-button {
+          min-width: 46px;
+          height: 46px;
+          padding: 0 18px;
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.52);
+          color: #173957;
+          border: 1px solid rgba(255, 255, 255, 0.78);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.9),
+            0 12px 26px rgba(81, 129, 168, 0.14);
+          backdrop-filter: blur(18px) saturate(160%);
+        }
+
+        .focus-shell[data-theme="dark"] .focus-button {
+          background: rgba(9, 24, 38, 0.72);
+          color: #cde7ff;
+          border-color: rgba(119, 190, 255, 0.18);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 12px 30px rgba(0, 0, 0, 0.28);
+        }
+
+        .focus-shell[data-theme="light"] .focus-button[data-action="exit"] {
+          background: linear-gradient(135deg, #34e2d0, #08bfae);
+          color: #073533;
+          border-color: rgba(255, 255, 255, 0.72);
+        }
+
+        .focus-shell[data-theme="dark"] .focus-button[data-action="exit"] {
+          background: linear-gradient(135deg, #1ff2dc, #18bfe3);
+          color: #03161d;
+          border-color: rgba(255, 255, 255, 0.18);
+        }
+
+        .focus-shell[data-theme="light"] .focus-stage,
+        .focus-shell[data-theme="dark"] .focus-stage {
+          max-width: 1180px;
+          min-height: calc(100vh - 116px);
+          margin: 0 auto 34px;
+          padding: 72px 42px 46px;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 300px;
+          gap: 56px;
+          border-radius: 34px;
+          background:
+            radial-gradient(circle at 78% 12%, rgba(255, 255, 255, 0.92), transparent 26%),
+            radial-gradient(circle at 18% 86%, rgba(255, 255, 255, 0.68), transparent 32%),
+            linear-gradient(135deg, rgba(255, 255, 255, 0.38), rgba(217, 239, 255, 0.34));
+          border: 1px solid rgba(255, 255, 255, 0.82);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.92),
+            0 28px 80px rgba(72, 119, 158, 0.20);
+          backdrop-filter: blur(28px) saturate(165%);
+          box-sizing: border-box;
+        }
+
+        .focus-shell[data-theme="dark"] .focus-stage {
+          background:
+            radial-gradient(circle at 82% 12%, rgba(46, 147, 255, 0.16), transparent 26%),
+            linear-gradient(135deg, rgba(8, 25, 39, 0.62), rgba(3, 10, 16, 0.42));
+          border-color: rgba(120, 190, 255, 0.18);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 30px 86px rgba(0, 0, 0, 0.42);
+        }
+
+        .focus-shell[data-theme="light"] .focus-title,
+        .focus-shell[data-theme="dark"] .focus-title {
+          max-width: 760px;
+          margin-bottom: 22px;
+          color: #0f2c4f !important;
+          -webkit-text-fill-color: #0f2c4f;
+          font-size: clamp(34px, 4.2vw, 52px);
+          line-height: 1.35;
+          letter-spacing: -0.04em;
+        }
+
+        .focus-shell[data-theme="dark"] .focus-title {
+          color: #edf7ff !important;
+          -webkit-text-fill-color: #edf7ff;
+          text-shadow: 0 10px 36px rgba(90, 170, 255, 0.18);
+        }
+
+        .focus-shell[data-theme="light"] .focus-meta,
+        .focus-shell[data-theme="dark"] .focus-meta {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 12px;
+          margin: 0 0 40px;
+          color: #7b91a8;
+          font-size: 14px;
+          font-weight: 700;
+        }
+
+        .focus-shell[data-theme="dark"] .focus-meta {
+          color: #8da7bd;
+        }
+
+        .focus-shell[data-theme="light"] .focus-meta-dot,
+        .focus-shell[data-theme="dark"] .focus-meta-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 999px;
+          background: radial-gradient(circle at 35% 35%, #ffffff 0 20%, #43c6ff 22% 100%);
+          box-shadow: 0 0 0 4px rgba(67, 198, 255, 0.16);
+        }
+
+        .focus-shell[data-theme="dark"] .focus-meta-dot {
+          background: radial-gradient(circle at 35% 35%, #ffffff 0 18%, #30b7ff 20% 100%);
+          box-shadow: 0 0 0 4px rgba(48, 183, 255, 0.12);
+        }
+
+        .focus-shell[data-theme="light"] .focus-body,
+        .focus-shell[data-theme="dark"] .focus-body {
+          max-width: 760px;
+          color: #263f56;
+          font-size: 20px;
+          line-height: 2.05;
+        }
+
+        .focus-shell[data-theme="dark"] .focus-body {
+          color: #a9bdcf;
+        }
+
+        .focus-shell[data-theme="light"] .focus-body h2 {
+          color: #153453 !important;
+          -webkit-text-fill-color: #153453;
+        }
+
+        .focus-shell[data-theme="dark"] .focus-body h2 {
+          color: #e8f5ff !important;
+          -webkit-text-fill-color: #e8f5ff;
+        }
+
+        .focus-shell[data-theme="light"] .focus-body p,
+        .focus-shell[data-theme="light"] .focus-body li {
+          color: #304a61 !important;
+          -webkit-text-fill-color: #304a61;
+        }
+
+        .focus-shell[data-theme="dark"] .focus-body p,
+        .focus-shell[data-theme="dark"] .focus-body li {
+          color: #9fb3c4 !important;
+          -webkit-text-fill-color: #9fb3c4;
+        }
+
+        .focus-shell[data-theme="light"] .focus-tags,
+        .focus-shell[data-theme="dark"] .focus-tags {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin: 44px 0 24px;
+        }
+
+        .focus-shell[data-theme="light"] .focus-tags span,
+        .focus-shell[data-theme="dark"] .focus-tags span {
+          padding: 8px 14px;
+          border-radius: 12px;
+          color: #42627c;
+          font-size: 13px;
+          font-weight: 700;
+          background: rgba(255, 255, 255, 0.46);
+          border: 1px solid rgba(255, 255, 255, 0.76);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+        }
+
+        .focus-shell[data-theme="dark"] .focus-tags span {
+          color: #9ec1dd;
+          background: rgba(37, 91, 130, 0.24);
+          border-color: rgba(105, 176, 234, 0.18);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        .focus-shell[data-theme="light"] .focus-aside,
+        .focus-shell[data-theme="dark"] .focus-aside {
+          display: grid;
+          align-content: start;
+          gap: 16px;
+        }
+
+        .focus-shell[data-theme="light"] .focus-side-card,
+        .focus-shell[data-theme="dark"] .focus-side-card {
+          padding: 24px;
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.42);
+          border: 1px solid rgba(255, 255, 255, 0.72);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.86),
+            0 18px 42px rgba(74, 119, 153, 0.14);
+          backdrop-filter: blur(22px) saturate(165%);
+        }
+
+        .focus-shell[data-theme="dark"] .focus-side-card {
+          background:
+            radial-gradient(circle at 100% 0%, rgba(39, 149, 255, 0.20), transparent 34%),
+            rgba(7, 21, 34, 0.58);
+          border-color: rgba(105, 176, 234, 0.18);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 18px 48px rgba(0, 0, 0, 0.34),
+            0 0 0 1px rgba(58, 164, 255, 0.04);
+        }
+
+        .focus-shell[data-theme="light"] .focus-side-card h3,
+        .focus-shell[data-theme="dark"] .focus-side-card h3 {
+          margin: 0 0 16px;
+          color: #173957;
+          font-size: 17px;
+          line-height: 1.4;
+        }
+
+        .focus-shell[data-theme="dark"] .focus-side-card h3 {
+          color: #e7f5ff;
+        }
+
+        .focus-shell[data-theme="light"] .focus-side-card p,
+        .focus-shell[data-theme="dark"] .focus-side-card p {
+          margin: 0;
+          color: #405f78;
+          font-size: 14px;
+          line-height: 1.9;
+        }
+
+        .focus-shell[data-theme="dark"] .focus-side-card p {
+          color: #9db9d0;
+        }
+
+        .focus-shell[data-theme="light"] .focus-key-list,
+        .focus-shell[data-theme="dark"] .focus-key-list {
+          display: grid;
+          gap: 16px;
+          margin: 0;
+          padding: 0;
+          list-style: none;
+        }
+
+        .focus-shell[data-theme="light"] .focus-key-list li,
+        .focus-shell[data-theme="dark"] .focus-key-list li {
+          display: grid;
+          grid-template-columns: 34px minmax(0, 1fr);
+          gap: 12px;
+          align-items: start;
+        }
+
+        .focus-shell[data-theme="light"] .focus-key-icon,
+        .focus-shell[data-theme="dark"] .focus-key-icon {
+          width: 34px;
+          height: 34px;
+          display: grid;
+          place-items: center;
+          border-radius: 999px;
+          background: linear-gradient(135deg, #dff4ff, #b7e6ff);
+          color: #1675ad;
+          font-size: 13px;
+          font-weight: 900;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
+        }
+
+        .focus-shell[data-theme="dark"] .focus-key-icon {
+          background: linear-gradient(135deg, rgba(51, 147, 255, 0.34), rgba(18, 112, 214, 0.44));
+          color: #bde3ff;
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.10),
+            0 0 22px rgba(36, 144, 255, 0.12);
+        }
+
+        .focus-shell[data-theme="light"] .focus-key-list p,
+        .focus-shell[data-theme="dark"] .focus-key-list p {
+          margin: 0;
+          color: #405f78;
+          font-size: 13px;
+          line-height: 1.65;
+          font-weight: 650;
+        }
+
+        .focus-shell[data-theme="light"] .focus-key-list strong,
+        .focus-shell[data-theme="dark"] .focus-key-list strong {
+          display: block;
+          margin-bottom: 4px;
+          color: #173957;
+          font-size: 13px;
+          line-height: 1.45;
+          font-weight: 850;
+        }
+
+        .focus-shell[data-theme="light"] .focus-key-list p span,
+        .focus-shell[data-theme="dark"] .focus-key-list p span {
+          display: block;
+        }
+
+        .focus-shell[data-theme="dark"] .focus-key-list p {
+          color: #a4bfd6;
+        }
+
+        .focus-shell[data-theme="dark"] .focus-key-list strong {
+          color: #e7f5ff;
+        }
+
+        @media (max-width: 980px) {
+          .focus-shell[data-theme="light"] .focus-stage,
+          .focus-shell[data-theme="dark"] .focus-stage {
+            grid-template-columns: 1fr;
+            margin: 0 14px 24px;
+            padding: 48px 24px;
+          }
+
+          .focus-shell[data-theme="light"] .focus-aside,
+          .focus-shell[data-theme="dark"] .focus-aside {
+            grid-row: auto;
+          }
+        }
+
         .focus-title,
         .focus-body,
         .focus-body * {
@@ -4127,7 +5042,8 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
         }
 
         .focus-shell[data-theme="light"] .focus-mask-pane {
-          background: rgba(240, 244, 246, 0.94);
+          background: rgba(244, 247, 245, 0.58);
+          backdrop-filter: blur(2px);
         }
 
         .focus-mask-frame {
@@ -4167,7 +5083,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
         /* 浅色模式下的遮罩层要稍微深一点，方便对比 */
         .focus-shell[data-theme="light"].line-focus-active .focus-title,
         .focus-shell[data-theme="light"].line-focus-active .focus-body > * {
-          opacity: 0.98;
+          opacity: 1;
         }
 
         /* 正在阅读的行：像聚光灯一样亮起 */
@@ -4194,6 +5110,13 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           pointer-events: none;
         }
 
+        .focus-shell[data-theme="light"] .focus-body.line-focus-active > .line-focus-keep::before {
+          background: rgba(255, 255, 255, 0.84);
+          box-shadow:
+            0 16px 38px rgba(19, 39, 33, 0.10),
+            inset 0 0 0 1px rgba(0, 115, 91, 0.10);
+        }
+
         .focus-selection-action {
           position: absolute;
           z-index: 3000;
@@ -4212,11 +5135,9 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       <div class="focus-shell" data-theme="${currentTheme}">
         <canvas id="rain-canvas"></canvas>
         <div class="focus-toolbar">
-          <strong>专注模式</strong>
           <div class="focus-actions">
             <button class="focus-button secondary focus-line-reset" type="button" data-action="clear-line-focus" style="display:none;">退出聚焦</button>
-            <button class="focus-button secondary" type="button" data-action="rain">雨效：开</button>
-            <button class="focus-button secondary" type="button" data-action="theme">${currentTheme === "dark" ? "深色模式" : "浅色模式"}</button>
+            <button class="focus-button secondary" type="button" data-action="theme">${currentTheme === "dark" ? "浅色模式" : "深色模式"}</button>
             <button class="focus-button" type="button" data-action="exit">退出</button>
           </div>
         </div>
@@ -4227,10 +5148,31 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           <div class="focus-mask-pane" data-pane="left"></div>
           <div class="focus-mask-frame"></div>
         </div>
-        <main class="focus-content">
-          <h1 class="focus-title">${escapeHtml(content.title)}</h1>
-          <div class="focus-body">${content.html}</div>
-        </main>
+        <div class="focus-stage">
+          <main class="focus-content">
+            <h1 class="focus-title">${escapeHtml(content.title)}</h1>
+            <div class="focus-meta">
+              <span class="focus-meta-dot"></span>
+              <span>${escapeHtml(location.hostname || "当前页面")}</span>
+              <span>·</span>
+              <span>${content.readMinutes || 1} 分钟阅读</span>
+            </div>
+            <div class="focus-body">${content.html}</div>
+            <div class="focus-tags">${focusTagsHtml}</div>
+          </main>
+          <aside class="focus-aside" aria-label="文章辅助信息">
+            <section class="focus-side-card">
+              <h3>文章摘要</h3>
+              <p>${escapeHtml(content.summary || content.title)}</p>
+            </section>
+            <section class="focus-side-card">
+              <h3>关键要点</h3>
+              <ul class="focus-key-list">
+                ${focusKeyPointsHtml || `<li><span class="focus-key-icon">1</span><p>${escapeHtml(content.title)}</p></li>`}
+              </ul>
+            </section>
+          </aside>
+        </div>
       </div>
     `;
 
@@ -4333,7 +5275,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     }
 
     if (themeToggleButtonEl instanceof HTMLElement) {
-      themeToggleButtonEl.textContent = currentTheme === "dark" ? "深色模式" : "浅色模式";
+      themeToggleButtonEl.textContent = currentTheme === "dark" ? "浅色模式" : "深色模式";
     }
 
     const clearSelectionActionButton = () => {
@@ -4453,7 +5395,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
         
         if (shellEl instanceof HTMLElement) shellEl.dataset.theme = nextTheme;
         
-        target.textContent = nextTheme === "dark" ? "深色模式" : "浅色模式";
+        target.textContent = nextTheme === "dark" ? "浅色模式" : "深色模式";
         return;
       } else if (action === "rain") {
         rainEnabled = !rainEnabled;
@@ -4816,33 +5758,38 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       allowedHosts: parseAllowedHosts(settingsFormEls.allowedHosts.value)
     };
 
-    const response = await chrome.runtime.sendMessage({
-      type: "SEMRUSH_COACH_SAVE_SETTINGS",
-      payload
-    });
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "SEMRUSH_COACH_SAVE_SETTINGS",
+        payload
+      });
 
-    if (!response?.ok) {
-      settingsStatusEl.textContent = `保存失败：${response?.error || "未知错误"}`;
+      if (!response?.ok) {
+        settingsStatusEl.textContent = `保存失败：${response?.error || "未知错误"}`;
+        return false;
+      }
+
+      state.settings = { ...DEFAULT_SETTINGS, ...response.data };
+      state.siteEnabled = isCurrentSiteEnabled(state.settings);
+      fillSettingsForm();
+      renderHistory();
+      renderQuickPrompts(QUICK_PROMPTS);
+      updatePageChip(getSnapshot());
+      setModeLabel(state.settings.remoteEnabled ? "remote" : "local");
+      queueAiTimelineRefresh(true);
+      settingsStatusEl.textContent = state.siteEnabled
+        ? formatTrialStatus(state.settings)
+        : "已保存，但当前网站还没被启用。";
+
+      if (collapseAfterSave) {
+        window.setTimeout(() => toggleSettings(false), 500);
+      }
+
+      return true;
+    } catch (err) {
+      settingsStatusEl.textContent = `保存失败：${err.message || "请求超时"}`;
       return false;
     }
-
-    state.settings = { ...DEFAULT_SETTINGS, ...response.data };
-    state.siteEnabled = isCurrentSiteEnabled(state.settings);
-    fillSettingsForm();
-    renderHistory();
-    renderQuickPrompts(QUICK_PROMPTS);
-    updatePageChip(getSnapshot());
-    setModeLabel(state.settings.remoteEnabled ? "remote" : "local");
-    queueAiTimelineRefresh(true);
-    settingsStatusEl.textContent = state.siteEnabled
-      ? formatTrialStatus(state.settings)
-      : "已保存，但当前网站还没被启用。";
-
-    if (collapseAfterSave) {
-      window.setTimeout(() => toggleSettings(false), 500);
-    }
-
-    return true;
   }
 
   async function addCurrentSite() {
@@ -5097,13 +6044,10 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     const snapshot = getSnapshot();
     updatePageChip(snapshot);
     setLoading(true);
+    const previousFormDisplay = formEl.style.display;
     formEl.style.display = "none";
 
-    state.history.push({
-      role: "user",
-      text: "📄 生成当前网页的产品需求文档 (PRD)"
-    });
-    renderHistory();
+    startToolTaskMessage("📄 生成当前网页的产品需求文档 (PRD)");
 
     const progressSteps = [
       "📸 正在抓取页面结构与截图…",
@@ -5179,7 +6123,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     } finally {
       window.clearInterval(progressTimer);
       progressCard.remove();
-      formEl.style.display = "";
+      formEl.style.display = previousFormDisplay;
       setLoading(false);
     }
   }
@@ -5208,17 +6152,15 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     const snapshot = getSnapshot();
     updatePageChip(snapshot);
     setLoading(true);
+    const previousFormDisplay = formEl.style.display;
+    formEl.style.display = "none";
 
     if (generateSummaryButtonEl) {
       generateSummaryButtonEl.disabled = true;
       generateSummaryButtonEl.textContent = "总结中…";
     }
 
-    state.history.push({
-      role: "user",
-      text: "🧠 请帮我总结当前页面并同步生成脑图"
-    });
-    renderHistory();
+    startToolTaskMessage("🧠 请帮我总结当前页面并同步生成脑图");
 
     const progressSteps = [
       "正在滚动采样页面内容…",
@@ -5281,14 +6223,16 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       const mindmapMermaid = String(data.mindmapMermaid || "").trim();
       applyUsageMeta(data.usageMeta);
 
+      let summaryEntryIndex = -1;
       if (summaryMarkdown) {
-        await revealAssistantMessage({
+        const summaryEntry = await revealAssistantMessage({
           pageSummary: data.pageSummary || `页面总结 · ${snapshot.title || snapshot.url}`,
           answer: summaryMarkdown,
           suggestedNextSteps: [],
           confidence: 0.94,
           elementHints: []
         });
+        summaryEntryIndex = state.history.indexOf(summaryEntry);
       }
 
       if (mindmapMermaid) {
@@ -5304,6 +6248,9 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       }
 
       renderHistory();
+      if (summaryEntryIndex >= 0) {
+        scrollHistoryToIndex(summaryEntryIndex, "start");
+      }
       openPanel(true);
     } catch (error) {
       window.clearInterval(progressTimer);
@@ -5324,6 +6271,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       window.clearInterval(progressTimer);
       progressCard.remove();
       setLoading(false);
+      formEl.style.display = previousFormDisplay;
       if (generateSummaryButtonEl) {
         generateSummaryButtonEl.disabled = false;
         generateSummaryButtonEl.textContent = "总结";
@@ -6190,9 +7138,20 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   }, 1200);
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type === "SEMRUSH_COACH_TOGGLE_PANEL") {
+      if (state.open) {
+        closePanel();
+      } else {
+        openPanel(!state.siteEnabled);
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
+
     if (message?.type !== "SEMRUSH_COACH_COLLECT_PAGE_CONTEXT") {
       return false;
     }
+
 
     (async () => {
       try {
@@ -6275,13 +7234,10 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
 
     setLoading(true);
     openPanel(true);
+    const previousFormDisplay = formEl.style.display;
+    formEl.style.display = "none";
 
-    state.history.push({
-      role: "user",
-      text: "项目评估：\n" + requirement.trim()
-    });
-    renderHistory();
-    scrollHistoryToBottom();
+    startToolTaskMessage("项目评估：\n" + requirement.trim());
 
     const progressSteps = [
       "⏳ 正在分析需求逻辑与技术可行性...",
@@ -6345,6 +7301,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
         progressCard.card.remove();
       }
       setLoading(false);
+      formEl.style.display = previousFormDisplay;
       renderHistory();
       scrollHistoryToBottom();
     }
