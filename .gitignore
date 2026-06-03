@@ -1,4 +1,5 @@
 releases/
+dist/
 server/data/
 .env
 .env.*
