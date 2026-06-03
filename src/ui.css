@@ -93,45 +93,45 @@
 }
 
 .semrush-coach-ai-timeline {
-  position: fixed;
-  top: 84px;
-  right: var(--semrush-coach-ai-timeline-right, 14px);
-  bottom: 164px;
-  z-index: 2147482900;
-  width: 248px;
+  position: fixed !important;
+  top: 50% !important;
+  right: 84px !important;
+  bottom: auto !important;
+  z-index: 2147483646 !important;
+  width: 54px;
+  height: 108px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: stretch;
   pointer-events: none;
+  isolation: isolate;
+  transform: translateY(-50%);
 }
 
 .semrush-coach-ai-timeline-body {
   position: relative;
+  z-index: 1;
   flex: 1;
   align-self: stretch;
   width: 100%;
   height: 100%;
-  min-height: 320px;
+  min-height: 0;
+  border-radius: 14px;
+  background: #fbfbfa;
+  border: 1px solid rgba(150, 155, 152, 0.72);
+  box-shadow: 0 10px 26px rgba(18, 24, 22, 0.14);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .semrush-coach-ai-timeline-line {
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: 50%;
-  width: 2px;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(48, 61, 58, 0.3), rgba(48, 61, 58, 0.16));
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.34),
-    0 0 0 2px rgba(16, 23, 22, 0.05);
+  display: none;
 }
 
 .semrush-coach-ai-timeline-items {
   position: absolute;
-  inset: 0;
+  inset: 8px 0;
   pointer-events: none;
 }
 
@@ -151,29 +151,29 @@
 }
 
 .semrush-coach-ai-timeline-keyword {
+  display: none !important;
   position: absolute;
   top: var(--label-top, 0%);
   transform: translateY(-50%);
-  display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 52px;
-  max-width: 112px;
-  min-height: 30px;
-  padding: 0 12px;
+  min-width: 72px;
+  max-width: 136px;
+  min-height: 32px;
+  padding: 0 14px;
   border-radius: 999px;
-  background: rgba(18, 24, 23, 0.58);
+  background: rgba(36, 45, 43, 0.52);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.86);
-  font-size: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0.01em;
   text-align: center;
   appearance: none;
-  height: 30px;
+  height: 32px;
   flex-wrap: nowrap !important;
   white-space: nowrap !important;
   word-break: keep-all;
@@ -181,7 +181,7 @@
   overflow-wrap: normal;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 8px 24px rgba(9, 14, 13, 0.14);
+  box-shadow: 0 10px 24px rgba(9, 14, 13, 0.12);
   transform-origin: right center;
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
   pointer-events: auto;
@@ -214,11 +214,12 @@
 }
 
 .semrush-coach-ai-timeline-keyword-left {
-  right: calc(50% + 16px);
+  right: 50px;
 }
 
 .semrush-coach-ai-timeline-keyword-right {
-  left: calc(50% + 16px);
+  right: 50px;
+  left: auto;
 }
 
 .semrush-coach-ai-timeline-item.is-active .semrush-coach-ai-timeline-keyword {
@@ -241,30 +242,40 @@
   position: absolute;
   top: var(--dot-top, 0%);
   left: 50%;
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.9);
+  right: auto;
+  width: 28px;
+  height: 2.5px;
+  border: 0;
   border-radius: 999px;
-  background: rgba(133, 144, 141, 0.84);
-  box-shadow: 0 6px 18px rgba(18, 31, 28, 0.12);
+  background: rgba(98, 104, 101, 0.82);
+  box-shadow: none;
   cursor: pointer;
   pointer-events: auto;
   transform: translate(-50%, -50%);
   transition: transform 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
+.semrush-coach-ai-timeline-item:nth-child(n+7) {
+  display: none !important;
+}
+
 .semrush-coach-ai-timeline-dot:hover,
 .semrush-coach-ai-timeline-dot:focus-visible,
 .semrush-coach-ai-timeline-dot.is-active {
-  background: #0c8b76;
-  border-color: rgba(228, 255, 249, 0.98);
-  box-shadow: 0 8px 24px rgba(12, 139, 118, 0.28);
-  transform: translate(-50%, -50%) scale(1.18);
+  left: 50%;
+  right: auto;
+  width: 28px;
+  height: 2.5px;
+  background: rgba(18, 23, 20, 0.94);
+  box-shadow: none;
+  transform: translate(-50%, -50%);
   outline: none;
 }
 
 .semrush-coach-ai-timeline-preview {
+  display: none !important;
   position: absolute;
+  z-index: 2;
   top: 8px;
   right: calc(100% + 16px);
   width: min(280px, calc(100vw - 120px));
@@ -279,6 +290,26 @@
   font-size: 13px;
   line-height: 1.65;
   text-align: left;
+  pointer-events: none;
+}
+
+.semrush-coach-ai-timeline-debug {
+  display: none !important;
+  position: fixed !important;
+  right: 12px !important;
+  top: 92px !important;
+  z-index: 2147483647 !important;
+  max-width: min(820px, calc(100vw - 32px));
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(12, 18, 16, 0.88);
+  color: #f5fff9;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   pointer-events: none;
 }
 
@@ -1892,11 +1923,18 @@
   padding-right: 4px;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 720px) and (pointer: coarse) {
   .semrush-coach-ai-timeline {
     display: none !important;
   }
+}
 
+.semrush-coach-ai-timeline,
+.semrush-coach-ai-timeline-debug {
+  display: none !important;
+}
+
+@media (max-width: 720px) {
   .semrush-coach-root {
     right: 12px;
     bottom: 16px;

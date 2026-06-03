@@ -266,7 +266,7 @@ async function requestModelCompletion({ settings, feature, requestBody, timeoutM
     return requestDirectCompletion({ settings, requestBody, timeoutMs });
   }
 
-  throw new Error("请先配置体验服务地址，或填写你自己的 API Key。");
+  throw new Error("请先填写你自己的 API Key。");
 }
 
 export async function getTrialStatus(settings) {
@@ -459,7 +459,7 @@ export async function testRemoteConnection(settings) {
   }
 
   if (!hasDirectRemoteSettings(settings)) {
-    throw new Error("请先填写你自己的 API Key，或配置体验服务地址。");
+    throw new Error("请先填写你自己的 API Key。");
   }
 
   try {
@@ -745,6 +745,67 @@ export async function generatePageSummaryAnalysis({ payload, settings }) {
   });
   const content = data?.choices?.[0]?.message?.content;
   return attachUsageMeta(safeParseModelJson(content), data);
+}
+
+const FOCUS_READING_INSIGHTS_SYSTEM_PROMPT = [
+  "你是一个擅长长文阅读的中文知识助理。",
+  "用户会给你网页文章正文。你的任务是先理解文章，再为沉浸阅读侧边栏生成摘要和关键节点。",
+  "",
+  "输出要求：",
+  "1. 全部使用中文。",
+  "2. articleSummary 用 80-140 个中文字符概括文章主旨，必须重写表达，不要照抄原文开头或连续复用原文长句。",
+  "3. keyNodes 返回 3-5 个关键节点，每个节点包含 title 和 body。",
+  "4. title 必须短，适合当目录节点；body 必须解释这个节点为什么重要，不能只是复制原文句子。",
+  "5. 如果正文是小说/故事，节点要按情节推进、人物冲突、世界观信息来提炼；不要写成商业方法论。",
+  "6. 如果信息不足，不要编造，只总结正文明确出现的内容。",
+  "7. 输出应像读完文章后的讲解，不像摘抄；避免与原文连续 12 个中文字符以上完全相同。",
+  "8. 只返回严格 JSON，不要加代码块。",
+  'Schema: {"articleSummary":"string","keyNodes":[{"title":"string","body":"string"}]}'
+].join("\n");
+
+export async function generateFocusReadingInsights({ payload, settings }) {
+  const timeoutMs = Math.max(settings.timeoutMs || DEFAULT_TIMEOUT_MS, 180000);
+  const articleText = String(payload.articleText || "").slice(0, 18000);
+
+  const messages = [
+    { role: "system", content: FOCUS_READING_INSIGHTS_SYSTEM_PROMPT },
+    {
+      role: "user",
+      content: JSON.stringify({
+        task: "FOCUS_READING_INSIGHTS",
+        url: payload.url || "",
+        title: payload.title || "",
+        articleText,
+        localSummary: payload.localSummary || "",
+        localKeyPoints: payload.localKeyPoints || []
+      }, null, 2)
+    }
+  ];
+
+  const data = await requestModelCompletion({
+    settings,
+    feature: "focus_reading_insights",
+    requestBody: {
+      model: settings.model || DEFAULT_MODEL,
+      temperature: 0.2,
+      messages
+    },
+    timeoutMs
+  });
+  const content = data?.choices?.[0]?.message?.content;
+  const parsed = safeParseModelJson(content);
+  return attachUsageMeta({
+    articleSummary: String(parsed.articleSummary || "").trim(),
+    keyNodes: Array.isArray(parsed.keyNodes)
+      ? parsed.keyNodes
+          .map((item) => ({
+            title: String(item?.title || "").trim(),
+            body: String(item?.body || "").trim()
+          }))
+          .filter((item) => item.title || item.body)
+          .slice(0, 5)
+      : []
+  }, data);
 }
 
 const PAGE_DIFF_SYSTEM_PROMPT = [

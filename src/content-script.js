@@ -23,6 +23,10 @@
     "chat.openai.com",
     "gemini.google.com"
   ];
+  const AI_TIMELINE_CACHE_PREFIX = "pageCoach.aiTimeline.v1:";
+  const AI_TIMELINE_CACHE_MAX_ITEMS = 60;
+  const AI_TIMELINE_FEATURE_ENABLED = false;
+  const FIXED_VISUAL_MODEL = "qwen-vl-plus";
 
   const DEFAULT_SETTINGS = {
     remoteEnabled: true,
@@ -30,10 +34,10 @@
     trialApiUrl: "",
     freeTrialLimit: 15,
     apiUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-    model: "qwen-vl-plus",
+    model: FIXED_VISUAL_MODEL,
     apiKey: "",
     fallbackToLocal: true,
-    aiTimelineEnabled: true,
+    aiTimelineEnabled: false,
     allowedHosts: DEFAULT_ALLOWED_HOSTS
   };
 
@@ -72,6 +76,10 @@
       keywordCache: {},
       keywordRequests: new Set(),
       markedKeys: new Set(),
+      lastItemsUrl: "",
+      lastItemsAt: 0,
+      accumulatedItems: [],
+      accumulatedItemsUrl: "",
       runtimeUnavailable: false
     },
     selectionActive: false,
@@ -108,7 +116,7 @@
       <div class="semrush-coach-page-chip">正在读取当前页面…</div>
       <section class="semrush-coach-settings semrush-coach-hidden">
         <div class="semrush-coach-settings-grid">
-          <label class="semrush-coach-setting-full semrush-coach-admin-only">
+          <label class="semrush-coach-setting-full semrush-coach-admin-only semrush-coach-hidden">
             <span>体验服务地址</span>
             <input class="semrush-coach-setting-trial-api-url" type="text" placeholder="使用个人 Key 直连时，请保持此处完全空白" />
           </label>
@@ -141,8 +149,8 @@
             <span>启用网站列表（每行一个域名）</span>
             <textarea class="semrush-coach-setting-hosts" rows="5" placeholder="semrush.com&#10;polymarket.com&#10;*.example.com"></textarea>
           </label>
-          <label class="semrush-coach-setting-full semrush-coach-setting-checkbox">
-            <input class="semrush-coach-setting-ai-timeline" type="checkbox" checked />
+          <label class="semrush-coach-setting-full semrush-coach-setting-checkbox semrush-coach-hidden">
+            <input class="semrush-coach-setting-ai-timeline" type="checkbox" />
             <span>AI 对话页时间轴（ChatGPT / Gemini）</span>
           </label>
         </div>
@@ -229,8 +237,36 @@
   `;
   document.body.appendChild(aiTimelineEl);
 
+  const aiTimelineDebugEl = document.createElement("div");
+  aiTimelineDebugEl.className = "semrush-coach-ai-timeline-debug";
+  aiTimelineDebugEl.dataset.pageCoachInstance = pageCoachInstanceId;
+  aiTimelineDebugEl.textContent = "AI Timeline: loading";
+  document.body.appendChild(aiTimelineDebugEl);
+
+  function getPageCoachMountRoot() {
+    return document.body || document.documentElement;
+  }
+
+  function ensurePageCoachNodesMounted() {
+    const mountRoot = getPageCoachMountRoot();
+    if (!mountRoot) {
+      return false;
+    }
+
+    let remounted = false;
+    [root, aiTimelineEl, aiTimelineDebugEl].forEach((node) => {
+      if (node instanceof HTMLElement && !node.isConnected) {
+        mountRoot.appendChild(node);
+        remounted = true;
+      }
+    });
+
+    return remounted;
+  }
+
   function cleanupDuplicatePageCoachNodes() {
-    document.querySelectorAll(".semrush-coach-root, .semrush-coach-ai-timeline").forEach((node) => {
+    ensurePageCoachNodesMounted();
+    document.querySelectorAll(".semrush-coach-root, .semrush-coach-ai-timeline, .semrush-coach-ai-timeline-debug").forEach((node) => {
       if (!(node instanceof HTMLElement)) {
         return;
       }
@@ -579,13 +615,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   const PROVIDERS = {
     qianwen: {
       url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-      models: [
-        "qwen-vl-max-latest", 
-        "qwen-vl-max", 
-        "qwen-omni-turbo",
-        "qwen-max-latest",
-        "qwen-vl-plus"
-      ]
+      models: [FIXED_VISUAL_MODEL]
     },
     doubao: {
       url: "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
@@ -597,10 +627,28 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     {
       id: "chatgpt",
       hosts: ["chatgpt.com", "chat.openai.com"],
-      messageSelectors: ['div[data-message-author-role="user"]', '[data-testid^="conversation-turn-"] [data-message-author-role="user"]'],
-      textSelectors: [".whitespace-pre-wrap", "[dir='auto']"],
+      messageSelectors: [
+        '[data-message-author-role="user"]',
+        '[data-testid="user-message"]',
+        '[data-testid*="user-message"]',
+        '[data-testid^="conversation-turn-"] [data-message-author-role="user"]'
+      ],
+      textSelectors: [".whitespace-pre-wrap", ".markdown", "[dir='auto']"],
       minBubbleWidth: 48,
-      timelineRightOffset: 72
+      timelineRightOffset: 72,
+      useRightBubbleFallback: true,
+      fallbackSelectors: [
+        '[data-testid^="conversation-turn-"]',
+        '[data-message-author-role]',
+        ".whitespace-pre-wrap",
+        "[dir='auto']",
+        "article",
+        "div",
+        "p",
+        "span"
+      ],
+      maxFallbackTextLength: 800,
+      usePositionFallback: true
     },
     {
       id: "gemini",
@@ -647,6 +695,62 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     );
   }
 
+  function updateAiTimelineDebug(details = {}) {
+    if (!(aiTimelineDebugEl instanceof HTMLElement)) {
+      return;
+    }
+
+    const siteConfig = details.siteConfig || getAiTimelineSiteConfig();
+    const isAiSite = Boolean(siteConfig);
+    aiTimelineDebugEl.classList.toggle("semrush-coach-hidden", !isAiSite);
+    if (!isAiSite) {
+      return;
+    }
+
+    const timelineStyle = aiTimelineEl instanceof HTMLElement
+      ? window.getComputedStyle(aiTimelineEl)
+      : null;
+    const rawCount = Number.isFinite(Number(details.rawCount)) ? Number(details.rawCount) : 0;
+    const itemCount = Number.isFinite(Number(details.itemCount)) ? Number(details.itemCount) : 0;
+    const hidden = aiTimelineEl?.classList?.contains("semrush-coach-hidden") ? "yes" : "no";
+    const display = timelineStyle?.display || "n/a";
+    const visibility = timelineStyle?.visibility || "n/a";
+    const zIndex = timelineStyle?.zIndex || "n/a";
+    const reason = details.reason || "render";
+
+    aiTimelineDebugEl.textContent = [
+      "AI Timeline",
+      `site=${siteConfig.id}`,
+      `enabled=${state.settings.aiTimelineEnabled !== false}`,
+      `panelOpen=${Boolean(state.open)}`,
+      `raw=${rawCount}`,
+      `items=${itemCount}`,
+      `hidden=${hidden}`,
+      `display=${display}`,
+      `visible=${visibility}`,
+      `z=${zIndex}`,
+      `vw=${window.innerWidth}`,
+      `reason=${reason}`
+    ].join(" | ");
+
+    window.__pageCoachTimelineDebug = {
+      site: siteConfig.id,
+      enabled: state.settings.aiTimelineEnabled !== false,
+      panelOpen: Boolean(state.open),
+      rawCount,
+      itemCount,
+      hidden,
+      display,
+      visibility,
+      zIndex,
+      viewportWidth: window.innerWidth,
+      reason,
+      href: window.location.href,
+      lastItemsUrl: state.aiTimeline.lastItemsUrl,
+      lastItemsAt: state.aiTimeline.lastItemsAt
+    };
+  }
+
   function truncateTimelinePreview(text, maxLength = 120) {
     const normalized = String(text || "").replace(/\s+/g, " ").trim();
     if (normalized.length <= maxLength) {
@@ -660,6 +764,18 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       .replace(/\s+/g, " ")
       .replace(/^(你说|你问|你提问了|you said|you asked)\s*[:：]?\s*/i, "")
       .trim();
+  }
+
+  function isValidAiTimelineText(text) {
+    const normalized = normalizeTimelineText(text);
+    if (!normalized) {
+      return false;
+    }
+
+    return !/^window\.__oai_/i.test(normalized) &&
+      !normalized.includes(".__oai_") &&
+      !normalized.includes("oai_logHTML") &&
+      !normalized.includes("oai_SSR_HTML");
   }
 
   function extractTimelineNodeText(node, siteConfig = null) {
@@ -723,7 +839,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
         }
 
         const text = extractTimelineNodeText(element, siteConfig);
-        if (!text) {
+        if (!isValidAiTimelineText(text)) {
           return null;
         }
 
@@ -736,6 +852,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           preview: truncateTimelinePreview(text),
           keyword: "",
           markerKey: getAiTimelineMarkerKey(text, top),
+          sourceKey: getAiTimelineSourceKey(element, text, top),
           top,
           centerY,
           height: Math.round(rect.height)
@@ -744,7 +861,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       .filter(Boolean)
       .sort((a, b) => a.top - b.top);
 
-    const items = [];
+    let items = [];
     for (const candidate of candidates) {
       const previous = items[items.length - 1];
       if (
@@ -757,11 +874,41 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       items.push(candidate);
     }
 
-    if (!items.length && siteConfig.useRightBubbleFallback) {
-      return collectAiTimelineItemsByRightBubble(siteConfig);
+    if (siteConfig.id === "chatgpt") {
+      return items;
+    }
+
+    if (siteConfig.useRightBubbleFallback) {
+      const fallbackItems = collectAiTimelineItemsByRightBubble(siteConfig);
+      if (fallbackItems.length) {
+        items = mergeAiTimelineCandidateItems(items, fallbackItems);
+      }
+    }
+
+    if (siteConfig.usePositionFallback) {
+      const positionItems = collectAiTimelineItemsByPosition(siteConfig);
+      if (positionItems.length) {
+        items = mergeAiTimelineCandidateItems(items, positionItems);
+      }
     }
 
     return items;
+  }
+
+  function mergeAiTimelineCandidateItems(baseItems, extraItems) {
+    const merged = Array.isArray(baseItems) ? [...baseItems] : [];
+    const seen = new Set(merged.map((item) => getAiTimelineTextKey(item?.text)));
+
+    (Array.isArray(extraItems) ? extraItems : []).forEach((item) => {
+      const textKey = getAiTimelineTextKey(item?.text);
+      if (!textKey || seen.has(textKey)) {
+        return;
+      }
+      seen.add(textKey);
+      merged.push(item);
+    });
+
+    return merged.sort((a, b) => Number(a?.top || 0) - Number(b?.top || 0));
   }
 
   function isTransparentColor(color) {
@@ -866,7 +1013,8 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
         }
 
         const text = extractTimelineNodeText(element, siteConfig);
-        if (!text || text.length > 160) {
+        const maxFallbackTextLength = Number(siteConfig.maxFallbackTextLength) || 160;
+        if (!isValidAiTimelineText(text) || text.length > maxFallbackTextLength) {
           return null;
         }
 
@@ -879,6 +1027,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           preview: truncateTimelinePreview(text),
           keyword: "",
           markerKey: getAiTimelineMarkerKey(text, top),
+          sourceKey: getAiTimelineSourceKey(element, text, top),
           top,
           centerY,
           height: Math.round(rect.height)
@@ -915,6 +1064,98 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     return items;
   }
 
+  function collectAiTimelineItemsByPosition(siteConfig) {
+    const mainRoot =
+      document.querySelector("main") ||
+      document.querySelector("[role='main']") ||
+      document.body;
+
+    const selectorList = Array.isArray(siteConfig.fallbackSelectors) && siteConfig.fallbackSelectors.length
+      ? siteConfig.fallbackSelectors.join(",")
+      : "article, div, p";
+    const maxFallbackTextLength = Number(siteConfig.maxFallbackTextLength) || 240;
+
+    const rawCandidates = Array.from(mainRoot.querySelectorAll(selectorList))
+      .filter((node) => node instanceof HTMLElement)
+      .map((element) => {
+        if (!element.isConnected) {
+          return null;
+        }
+
+        const rect = element.getBoundingClientRect();
+        if (rect.width < 24 || rect.height < 18 || rect.height > 180) {
+          return null;
+        }
+
+        const centerX = rect.left + rect.width / 2;
+        const rightEdge = rect.right;
+        const looksLikeUserSide =
+          centerX >= window.innerWidth * 0.58 ||
+          rightEdge >= window.innerWidth * 0.72;
+        const tooWideForUserBubble = rect.width > Math.min(window.innerWidth * 0.48, 560);
+        if (!looksLikeUserSide || tooWideForUserBubble) {
+          return null;
+        }
+
+        const text = extractTimelineNodeText(element, siteConfig);
+        if (!isValidAiTimelineText(text) || text.length > maxFallbackTextLength) {
+          return null;
+        }
+
+        const normalizedText = getAiTimelineTextKey(text);
+        if (!normalizedText) {
+          return null;
+        }
+
+        const top = Math.round(rect.top + window.scrollY);
+        const centerY = top + rect.height / 2;
+
+        return {
+          element,
+          text,
+          textKey: normalizedText,
+          preview: truncateTimelinePreview(text),
+          keyword: "",
+          markerKey: getAiTimelineMarkerKey(text, top),
+          sourceKey: getAiTimelineSourceKey(element, text, top),
+          top,
+          centerY,
+          height: Math.round(rect.height),
+          area: rect.width * rect.height
+        };
+      })
+      .filter(Boolean);
+
+    const seenText = new Set();
+    const candidates = rawCandidates
+      .sort((a, b) => Number(a.area || 0) - Number(b.area || 0))
+      .filter((candidate) => {
+        if (seenText.has(candidate.textKey)) {
+          return false;
+        }
+        seenText.add(candidate.textKey);
+        return true;
+      })
+      .sort((a, b) => a.top - b.top);
+
+    const items = [];
+    for (const candidate of candidates) {
+      const previous = items[items.length - 1];
+      if (
+        previous &&
+        (
+          previous.text === candidate.text ||
+          Math.abs(previous.top - candidate.top) <= Math.max(32, Math.min(previous.height, candidate.height))
+        )
+      ) {
+        continue;
+      }
+      items.push(candidate);
+    }
+
+    return items;
+  }
+
   function getTimelineKeywordCacheKey(text) {
     return normalizeTimelineText(text).toLowerCase();
   }
@@ -924,6 +1165,195 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     const textKey = normalizeTimelineText(text).toLowerCase();
     const topBucket = Math.round(Number(top) / 24);
     return `${pathKey}::${topBucket}::${textKey}`;
+  }
+
+  function getAiTimelineTextKey(text) {
+    return normalizeTimelineText(text).toLowerCase();
+  }
+
+  function getAiTimelineConversationKey() {
+    const siteConfig = getAiTimelineSiteConfig();
+    if (!siteConfig) {
+      return "";
+    }
+
+    const path = window.location.pathname.replace(/\/+$/, "") || "/";
+    return `${siteConfig.id}:${window.location.origin}${path}`;
+  }
+
+  function getAiTimelineSourceKey(element, text, top) {
+    const conversationKey = getAiTimelineConversationKey();
+    const turnEl = element?.closest?.('[data-testid^="conversation-turn-"]');
+    const turnId = turnEl?.getAttribute?.("data-testid");
+    if (turnId) {
+      return `${conversationKey}::${turnId}`;
+    }
+
+    return getAiTimelineMarkerKey(text, top);
+  }
+
+  function getAiTimelineItemIdentityKey(item) {
+    return String(item?.sourceKey || item?.markerKey || getAiTimelineTextKey(item?.text || "") || "");
+  }
+
+  function readCachedAiTimelineItems(cacheKey) {
+    if (!cacheKey) {
+      return [];
+    }
+
+    try {
+      const raw = window.sessionStorage?.getItem(`${AI_TIMELINE_CACHE_PREFIX}${cacheKey}`);
+      const parsed = raw ? JSON.parse(raw) : null;
+      const cachedItems = Array.isArray(parsed?.items) ? parsed.items : [];
+      return cachedItems
+        .map((item, index) => {
+          const text = normalizeTimelineText(item?.text || "");
+          if (!isValidAiTimelineText(text)) {
+            return null;
+          }
+
+          const top = Number.isFinite(Number(item.top)) ? Number(item.top) : index * 120;
+          const height = Number.isFinite(Number(item.height)) ? Number(item.height) : 44;
+          return {
+            element: null,
+            text,
+            preview: truncateTimelinePreview(text),
+            keyword: normalizeTimelineText(item.keyword || ""),
+            markerKey: item.markerKey || getAiTimelineMarkerKey(text, top),
+            sourceKey: item.sourceKey || item.markerKey || getAiTimelineMarkerKey(text, top),
+            top,
+            centerY: Number.isFinite(Number(item.centerY)) ? Number(item.centerY) : top + height / 2,
+            height,
+            order: Number.isFinite(Number(item.order)) ? Number(item.order) : index
+          };
+        })
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  function writeCachedAiTimelineItems(cacheKey, items) {
+    if (!cacheKey || !Array.isArray(items)) {
+      return;
+    }
+
+    try {
+      const payload = {
+        updatedAt: Date.now(),
+        items: items
+          .slice(-AI_TIMELINE_CACHE_MAX_ITEMS)
+          .map((item, index) => ({
+            text: normalizeTimelineText(item.text),
+            preview: truncateTimelinePreview(item.text),
+            keyword: normalizeTimelineText(item.keyword || ""),
+            markerKey: item.markerKey || "",
+            sourceKey: item.sourceKey || "",
+            top: Number.isFinite(Number(item.top)) ? Number(item.top) : index * 120,
+            centerY: Number.isFinite(Number(item.centerY)) ? Number(item.centerY) : undefined,
+            height: Number.isFinite(Number(item.height)) ? Number(item.height) : undefined,
+            order: Number.isFinite(Number(item.order)) ? Number(item.order) : index
+          }))
+          .filter((item) => isValidAiTimelineText(item.text))
+      };
+      window.sessionStorage?.setItem(`${AI_TIMELINE_CACHE_PREFIX}${cacheKey}`, JSON.stringify(payload));
+    } catch {
+      // Cache is a convenience only; rendering should continue when storage is unavailable.
+    }
+  }
+
+  function mergeAccumulatedAiTimelineItems(items) {
+    const cacheKey = getAiTimelineConversationKey() || window.location.href;
+    if (state.aiTimeline.accumulatedItemsUrl !== cacheKey) {
+      const previousCacheKey = state.aiTimeline.accumulatedItemsUrl;
+      const previousItems = Array.isArray(state.aiTimeline.accumulatedItems)
+        ? state.aiTimeline.accumulatedItems
+        : [];
+      const siteConfig = getAiTimelineSiteConfig();
+      const rootCacheKey = siteConfig ? `${siteConfig.id}:${window.location.origin}/` : "";
+      const canCarryNewChatItems =
+        previousCacheKey === rootCacheKey &&
+        cacheKey.startsWith(`${siteConfig?.id}:${window.location.origin}/c/`) &&
+        previousItems.length;
+
+      state.aiTimeline.accumulatedItemsUrl = cacheKey;
+      const cachedItems = readCachedAiTimelineItems(cacheKey);
+      state.aiTimeline.accumulatedItems = cachedItems.length || !canCarryNewChatItems
+        ? cachedItems
+        : previousItems;
+    }
+
+    if (!items.length) {
+      return state.aiTimeline.accumulatedItems || [];
+    }
+
+    const nextItems = [...(state.aiTimeline.accumulatedItems || [])];
+    const seen = new Map(
+      nextItems.map((item, index) => [getAiTimelineItemIdentityKey(item), index])
+    );
+    const seenText = new Map(
+      nextItems.map((item, index) => [getAiTimelineTextKey(item.text), index])
+    );
+
+    items.forEach((item) => {
+      const itemKey = getAiTimelineItemIdentityKey(item);
+      if (!itemKey) {
+        return;
+      }
+
+      const textKey = getAiTimelineTextKey(item.text);
+      const previousIndex = seen.get(itemKey);
+      const cachedTextIndex = seenText.get(textKey);
+      if (Number.isFinite(previousIndex)) {
+        nextItems[previousIndex] = {
+          ...nextItems[previousIndex],
+          ...item,
+          order: nextItems[previousIndex].order
+        };
+        return;
+      }
+
+      if (
+        Number.isFinite(cachedTextIndex) &&
+        !(nextItems[cachedTextIndex]?.element instanceof HTMLElement)
+      ) {
+        nextItems[cachedTextIndex] = {
+          ...nextItems[cachedTextIndex],
+          ...item,
+          order: nextItems[cachedTextIndex].order
+        };
+        seen.set(itemKey, cachedTextIndex);
+        return;
+      }
+
+      seen.set(itemKey, nextItems.length);
+      seenText.set(textKey, nextItems.length);
+      nextItems.push({
+        ...item,
+        order: nextItems.length
+      });
+    });
+
+    state.aiTimeline.accumulatedItems = nextItems;
+    writeCachedAiTimelineItems(cacheKey, nextItems);
+    return nextItems;
+  }
+
+  function stabilizeAiTimelineItems(items) {
+    const mergedItems = mergeAccumulatedAiTimelineItems(items);
+    if (items.length) {
+      state.aiTimeline.lastItemsUrl = window.location.href;
+      state.aiTimeline.lastItemsAt = Date.now();
+      return mergedItems;
+    }
+
+    if (state.aiTimeline.lastItemsUrl !== window.location.href) {
+      return mergedItems;
+    }
+
+    const recentItems = mergedItems.length ? mergedItems : state.aiTimeline.items || [];
+    const withinGracePeriod = Date.now() - Number(state.aiTimeline.lastItemsAt || 0) < 30000;
+    return recentItems.length && withinGracePeriod ? recentItems : mergedItems;
   }
 
   function isAiTimelineMarked(item) {
@@ -1035,6 +1465,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   }
 
   function showAiTimelinePreview(text, anchorEl = null) {
+    return;
     if (!(aiTimelinePreviewEl instanceof HTMLElement) || !text) {
       return;
     }
@@ -1100,15 +1531,18 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       state.aiTimeline.activeIndex = bestIndex;
     }
 
-    aiTimelineItemsEl.querySelectorAll(".semrush-coach-ai-timeline-dot").forEach((dot, index) => {
-      dot.classList.toggle("is-active", index === bestIndex);
-      dot.closest(".semrush-coach-ai-timeline-item")?.classList.toggle("is-active", index === bestIndex);
+    aiTimelineItemsEl.querySelectorAll(".semrush-coach-ai-timeline-dot").forEach((dot) => {
+      const dotIndex = Number(dot.getAttribute("data-index"));
+      const isActive = dotIndex === bestIndex;
+      dot.classList.toggle("is-active", isActive);
+      dot.closest(".semrush-coach-ai-timeline-item")?.classList.toggle("is-active", isActive);
     });
   }
 
   function renderAiConversationTimeline(force = false) {
     const shouldShow = Boolean(
-      state.settings.aiTimelineEnabled &&
+      AI_TIMELINE_FEATURE_ENABLED &&
+        state.settings.aiTimelineEnabled &&
         getAiTimelineSiteConfig() &&
         !state.open
     );
@@ -1122,21 +1556,40 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       hideAiTimelinePreview();
       state.aiTimeline.signature = "";
       state.aiTimeline.items = [];
+      updateAiTimelineDebug({
+        siteConfig,
+        rawCount: 0,
+        itemCount: 0,
+        reason: state.open ? "panel-open" : "disabled-or-site"
+      });
       return;
     }
 
-    const items = collectAiTimelineItems();
+    const rawItems = collectAiTimelineItems();
+    const items = stabilizeAiTimelineItems(rawItems);
     const signature = items.map((item) => `${item.top}:${item.text.slice(0, 60)}`).join("|");
 
     if (!force && signature === state.aiTimeline.signature) {
       aiTimelineEl.classList.toggle("semrush-coach-hidden", !items.length);
       updateAiTimelineActiveState();
+      updateAiTimelineDebug({
+        siteConfig,
+        rawCount: rawItems.length,
+        itemCount: items.length,
+        reason: "signature-same"
+      });
       return;
     }
 
     state.aiTimeline.signature = signature;
     state.aiTimeline.items = items;
     aiTimelineEl.classList.toggle("semrush-coach-hidden", !items.length);
+    updateAiTimelineDebug({
+      siteConfig,
+      rawCount: rawItems.length,
+      itemCount: items.length,
+      reason: "legacy-render"
+    });
     hideAiTimelinePreview();
 
     aiTimelineItemsEl.innerHTML = items
@@ -1194,6 +1647,32 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       subtree: true,
       characterData: true
     });
+
+    return observer;
+  }
+
+  function observePageCoachMountLifecycle() {
+    const observerRoot = document.documentElement || document.body;
+    if (!(observerRoot instanceof HTMLElement)) {
+      return null;
+    }
+
+    const observer = new MutationObserver(() => {
+      if (ensurePageCoachNodesMounted()) {
+        queueAiTimelineRefresh(true);
+      }
+    });
+
+    observer.observe(observerRoot, {
+      childList: true,
+      subtree: true
+    });
+
+    window.setInterval(() => {
+      if (ensurePageCoachNodesMounted()) {
+        queueAiTimelineRefresh(true);
+      }
+    }, 1000);
 
     return observer;
   }
@@ -1259,38 +1738,19 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   }
 
   function buildAiTimelineLayout(items) {
-    const timelineRect = aiTimelineItemsEl?.getBoundingClientRect?.();
-    const timelineHeight = Math.max(320, Math.round(timelineRect?.height || aiTimelineEl?.getBoundingClientRect?.().height || 420));
-    const minGapPx = 56;
-    const edgePaddingPx = 24;
-
-    const dotPercents = items.map((item, index) => getAiTimelineItemPercent(item, index, items));
-    const dotPositions = dotPercents.map((percent) => (percent / 100) * timelineHeight);
-    const labelPositions = dotPositions.map((value) =>
-      Math.max(edgePaddingPx, Math.min(timelineHeight - edgePaddingPx, value))
-    );
-
-    for (let index = 1; index < labelPositions.length; index += 1) {
-      labelPositions[index] = Math.max(labelPositions[index], labelPositions[index - 1] + minGapPx);
-    }
-
-    const overflow = labelPositions[labelPositions.length - 1] - (timelineHeight - edgePaddingPx);
-    if (overflow > 0) {
-      for (let index = 0; index < labelPositions.length; index += 1) {
-        labelPositions[index] -= overflow;
-      }
-    }
-
-    for (let index = labelPositions.length - 2; index >= 0; index -= 1) {
-      labelPositions[index] = Math.min(labelPositions[index], labelPositions[index + 1] - minGapPx);
-    }
-
-    for (let index = 0; index < labelPositions.length; index += 1) {
-      labelPositions[index] = Math.max(edgePaddingPx, Math.min(timelineHeight - edgePaddingPx, labelPositions[index]));
+    if (items.length <= 1) {
+      return items.map((item, index) => ({
+        item,
+        index,
+        dotTopPercent: 50,
+        labelTopPercent: 50,
+        showKeyword: false,
+        side: "left"
+      }));
     }
 
     return items.map((item, index) => {
-      const labelTopPercent = (labelPositions[index] / timelineHeight) * 100;
+      const labelTopPercent = 22 + (index * 56) / (items.length - 1);
       const dotTopPercent = labelTopPercent;
       const showKeyword = Boolean(item.keyword);
       const side = index % 2 === 0 ? "left" : "right";
@@ -1306,7 +1766,22 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     });
   }
 
+  function getVisibleAiTimelineLayoutItems(layoutItems) {
+    const maxVisibleItems = 6;
+    if (!Array.isArray(layoutItems) || layoutItems.length <= maxVisibleItems) {
+      return layoutItems;
+    }
+
+    const activeIndex = Number(state.aiTimeline.activeIndex);
+    const focusIndex = Number.isFinite(activeIndex) && activeIndex >= 0
+      ? Math.min(activeIndex, layoutItems.length - 1)
+      : layoutItems.length - 1;
+    const start = Math.max(0, Math.min(focusIndex - 2, layoutItems.length - maxVisibleItems));
+    return layoutItems.slice(start, start + maxVisibleItems);
+  }
+
   function renderAiConversationTimelineEnhanced(force = false) {
+    ensurePageCoachNodesMounted();
     cleanupDuplicatePageCoachNodes();
 
     const siteConfig = getAiTimelineSiteConfig();
@@ -1314,7 +1789,8 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       state.aiTimeline.runtimeUnavailable = false;
     }
     const shouldShow = Boolean(
-      state.settings.aiTimelineEnabled &&
+      AI_TIMELINE_FEATURE_ENABLED &&
+        state.settings.aiTimelineEnabled &&
         siteConfig &&
         !state.open
     );
@@ -1334,24 +1810,53 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       hideAiTimelinePreview();
       state.aiTimeline.signature = "";
       state.aiTimeline.items = [];
+      state.aiTimeline.lastItemsUrl = "";
+      state.aiTimeline.lastItemsAt = 0;
+      state.aiTimeline.accumulatedItems = [];
+      state.aiTimeline.accumulatedItemsUrl = "";
+      updateAiTimelineDebug({
+        siteConfig,
+        rawCount: 0,
+        itemCount: 0,
+        reason: state.open ? "panel-open" : "disabled-or-site"
+      });
       return;
     }
 
-    const items = hydrateAiTimelineKeywords(collectAiTimelineItems());
+    const rawItems = collectAiTimelineItems();
+    const items = hydrateAiTimelineKeywords(stabilizeAiTimelineItems(rawItems));
     const signature = items.map((item) => `${item.top}:${item.text.slice(0, 60)}`).join("|");
 
     if (!force && signature === state.aiTimeline.signature) {
       aiTimelineEl.classList.toggle("semrush-coach-hidden", !items.length);
       updateAiTimelineActiveState();
+      updateAiTimelineDebug({
+        siteConfig,
+        rawCount: rawItems.length,
+        itemCount: items.length,
+        reason: "signature-same"
+      });
       return;
     }
 
     state.aiTimeline.signature = signature;
     state.aiTimeline.items = items;
     aiTimelineEl.classList.toggle("semrush-coach-hidden", !items.length);
+    if (items.length) {
+      aiTimelineEl.style.display = "flex";
+      aiTimelineEl.style.visibility = "visible";
+      aiTimelineEl.style.opacity = "1";
+      aiTimelineEl.style.height = `${Math.min(172, Math.max(96, items.length * 20 + 48))}px`;
+    }
+    updateAiTimelineDebug({
+      siteConfig,
+      rawCount: rawItems.length,
+      itemCount: items.length,
+      reason: "enhanced-render"
+    });
     hideAiTimelinePreview();
 
-    const layoutItems = buildAiTimelineLayout(items);
+    const layoutItems = getVisibleAiTimelineLayoutItems(buildAiTimelineLayout(items));
 
     aiTimelineItemsEl.innerHTML = layoutItems
       .map(({ item, index, dotTopPercent, labelTopPercent, showKeyword, side }) => {
@@ -2852,12 +3357,12 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
 
   function fillSettingsForm() {
     state.hydratingSettingsForm = true;
-    const defaultUrl = state.settings.apiUrl || PROVIDERS.qianwen.url;
-    settingsFormEls.trialApiUrl.value = state.settings.trialApiUrl || "";
+    const defaultUrl = PROVIDERS.qianwen.url;
+    settingsFormEls.trialApiUrl.value = "";
     settingsFormEls.apiUrl.value = defaultUrl;
     settingsFormEls.apiKey.value = state.settings.apiKey || "";
     settingsFormEls.allowedHosts.value = parseAllowedHosts(state.settings.allowedHosts).join("\n");
-    settingsFormEls.aiTimelineEnabled.checked = state.settings.aiTimelineEnabled !== false;
+    settingsFormEls.aiTimelineEnabled.checked = AI_TIMELINE_FEATURE_ENABLED && state.settings.aiTimelineEnabled !== false;
     settingsStatusEl.textContent = formatTrialStatus(state.settings);
     
     // 匹配 Provider
@@ -2870,7 +3375,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     }
     
     providerSelectEl.value = matchedProvider;
-    updateProviderUI(matchedProvider, state.settings.model);
+    updateProviderUI(matchedProvider, FIXED_VISUAL_MODEL);
     state.hydratingSettingsForm = false;
   }
 
@@ -2934,14 +3439,11 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   }
 
   function getActiveModel() {
-    if (providerSelectEl.value === "custom" || modelSelectEl.value === "ep-") {
-      return settingsFormEls.modelInput.value.trim();
-    }
-    return modelSelectEl.value;
+    return FIXED_VISUAL_MODEL;
   }
 
   function hasTrialAccess(settings = state.settings) {
-    return Boolean(settings.remoteEnabled && settings.trialEnabled && settings.trialApiUrl);
+    return false;
   }
 
   function hasUserApiAccess(settings = state.settings) {
@@ -2949,7 +3451,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   }
 
   function hasConfiguredRemoteAccess(settings = state.settings) {
-    return hasTrialAccess(settings) || hasUserApiAccess(settings);
+    return hasUserApiAccess(settings);
   }
 
   function formatTrialStatus(settings = state.settings) {
@@ -2960,13 +3462,10 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     if (trialStatus?.error) {
       return `体验服务状态：${trialStatus.error}`;
     }
-    if (hasTrialAccess(settings)) {
-      return "已开启免费体验通道，优先使用体验额度。";
-    }
     if (hasUserApiAccess(settings)) {
       return "已配置你自己的 API Key。";
     }
-    return "请先填写体验服务地址，或填写你自己的 API Key。";
+    return "请先填写你自己的 API Key。";
   }
 
   function getCurrentSiteDisplayName() {
@@ -4147,6 +4646,33 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     return points.slice(0, 4);
   }
 
+  function normalizeFocusInsightsKeyPoints(keyPoints, fallbackPoints = []) {
+    const source = Array.isArray(keyPoints) && keyPoints.length ? keyPoints : fallbackPoints;
+    return source
+      .map((point) => {
+        if (typeof point === "string") {
+          return { title: point, body: "" };
+        }
+        return {
+          title: String(point?.title || "").trim(),
+          body: String(point?.body || "").trim()
+        };
+      })
+      .filter((point) => point.title || point.body)
+      .slice(0, 5);
+  }
+
+  function renderFocusKeyPointsHtml(keyPoints) {
+    return normalizeFocusInsightsKeyPoints(keyPoints)
+      .map((point, index) => `
+        <li>
+          <span class="focus-key-icon">${index + 1}</span>
+          <p><strong>${escapeHtml(point.title || "关键节点")}</strong>${point.body ? `<span>${escapeHtml(point.body)}</span>` : ""}</p>
+        </li>
+      `)
+      .join("");
+  }
+
   function buildFocusContent(selectionRect) {
     const allContentNodes = getFocusContentNodes().filter((node) => !isFocusNoiseNode(node));
     const matchedNodes = allContentNodes.filter((node) => rectsIntersect(selectionRect, node.getBoundingClientRect()));
@@ -4295,7 +4821,8 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       summary,
       keyPoints,
       tags,
-      readMinutes
+      readMinutes,
+      readableText
     };
   }
 
@@ -4345,15 +4872,15 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       .slice(0, 4)
       .map((tag) => `<span>${escapeHtml(tag)}</span>`)
       .join("");
-    const focusKeyPointsHtml = (content.keyPoints || [])
-      .slice(0, 4)
-      .map((point, index) => `
-        <li>
-          <span class="focus-key-icon">${index + 1}</span>
-          <p><strong>${escapeHtml(point.title || point)}</strong>${point.body ? `<span>${escapeHtml(point.body)}</span>` : ""}</p>
-        </li>
-      `)
-      .join("");
+    const hasRemoteAccess = hasConfiguredRemoteAccess();
+    const hasEnoughTextForInsights = String(content.readableText || "").length >= 120;
+    const hasRemoteInsights = hasRemoteAccess && hasEnoughTextForInsights;
+    const initialSummary = hasRemoteInsights
+      ? "AI 正在理解文章，稍后会把这里替换成真正的摘要。"
+      : (hasRemoteAccess ? "正文内容不足，暂时无法生成可靠的 AI 摘要。" : "未生成 AI 摘要：请先填写你自己的 API Key。");
+    const focusKeyPointsHtml = hasRemoteInsights
+      ? `<li><span class="focus-key-icon">1</span><p><strong>正在提炼关键节点</strong><span>会结合全文生成，而不是直接截取原文。</span></p></li>`
+      : `<li><span class="focus-key-icon">1</span><p><strong>${hasRemoteAccess ? "等待更完整正文" : "需要连接 AI"}</strong><span>${hasRemoteAccess ? "正文太短时不展示伪摘要。" : "连接后才会生成摘要和关键节点。"}</span></p></li>`;
     shadow.innerHTML = `
       <style>
         .focus-shell {
@@ -4378,7 +4905,9 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           overflow-x: hidden;
           overscroll-behavior: contain;
           -webkit-overflow-scrolling: touch;
+          touch-action: pan-y;
           scroll-behavior: smooth;
+          outline: none;
         }
 
         #rain-canvas {
@@ -4435,8 +4964,10 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           overflow-x: hidden;
           overscroll-behavior: contain;
           -webkit-overflow-scrolling: touch;
+          touch-action: pan-y;
           scroll-behavior: smooth;
           transition: background 0.5s ease, color 0.3s ease;
+          outline: none;
         }
 
         .focus-shell[data-theme="light"] {
@@ -5025,6 +5556,36 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           -webkit-user-select: none;
         }
 
+        @media (pointer: coarse) {
+          .focus-shell {
+            scroll-behavior: auto;
+            touch-action: pan-y;
+          }
+
+          .focus-stage,
+          .focus-content,
+          .focus-body,
+          .focus-body *,
+          .focus-aside,
+          .focus-side-card {
+            touch-action: pan-y;
+          }
+
+          .focus-title,
+          .focus-body,
+          .focus-body * {
+            cursor: default;
+            user-select: none;
+            -webkit-user-select: none;
+          }
+
+          .focus-button,
+          .focus-button *,
+          .focus-toolbar {
+            touch-action: manipulation;
+          }
+        }
+
         .focus-mask-layer {
           position: fixed;
           inset: 0;
@@ -5132,7 +5693,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           animation: actionPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
       </style>
-      <div class="focus-shell" data-theme="${currentTheme}">
+      <div class="focus-shell" data-theme="${currentTheme}" tabindex="0">
         <canvas id="rain-canvas"></canvas>
         <div class="focus-toolbar">
           <div class="focus-actions">
@@ -5163,7 +5724,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
           <aside class="focus-aside" aria-label="文章辅助信息">
             <section class="focus-side-card">
               <h3>文章摘要</h3>
-              <p>${escapeHtml(content.summary || content.title)}</p>
+              <p class="focus-summary-text">${escapeHtml(initialSummary)}</p>
             </section>
             <section class="focus-side-card">
               <h3>关键要点</h3>
@@ -5178,6 +5739,8 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
 
     const shellEl = shadow.querySelector(".focus-shell");
     const focusBodyEl = shadow.querySelector(".focus-body");
+    const focusSummaryTextEl = shadow.querySelector(".focus-summary-text");
+    const focusKeyListEl = shadow.querySelector(".focus-key-list");
     const lineResetButtonEl = shadow.querySelector(".focus-line-reset");
     const themeToggleButtonEl = shadow.querySelector('[data-action="theme"]');
     const maskFrameEl = shadow.querySelector(".focus-mask-frame");
@@ -5195,6 +5758,48 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     let isPointerSelecting = false;
     let selectionAutoScrollSpeed = 0;
     let selectionAutoScrollRaf = null;
+    const isCoarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches || navigator.maxTouchPoints > 0;
+    let focusTouchScrollY = 0;
+    let focusTouchMoved = false;
+
+    const updateFocusInsights = (summary, keyPoints) => {
+      const nextSummary = String(summary || "").trim() || "AI 没有返回有效摘要，请重试。";
+      const nextKeyPoints = normalizeFocusInsightsKeyPoints(keyPoints);
+      if (focusSummaryTextEl) {
+        focusSummaryTextEl.textContent = nextSummary;
+      }
+      if (focusKeyListEl) {
+        focusKeyListEl.innerHTML = renderFocusKeyPointsHtml(nextKeyPoints) || `<li><span class="focus-key-icon">1</span><p><strong>AI 未返回关键节点</strong><span>请稍后重新生成。</span></p></li>`;
+      }
+    };
+
+    if (hasRemoteInsights) {
+      chrome.runtime.sendMessage({
+        type: "SEMRUSH_COACH_FOCUS_INSIGHTS",
+        payload: {
+          title: content.title,
+          url: location.href,
+          articleText: String(content.readableText || "").slice(0, 18000),
+          localSummary: content.summary,
+          localKeyPoints: content.keyPoints
+        }
+      }).then((response) => {
+        if (!response?.ok) {
+          throw new Error(response?.error || "AI 摘要生成失败");
+        }
+        applyUsageMeta(response.data?.usageMeta);
+        updateFocusInsights(response.data?.articleSummary, response.data?.keyNodes);
+      }).catch((error) => {
+        console.warn("[AI Coach] 沉浸阅读 AI 摘要生成失败", error);
+        const errorMessage = error instanceof Error ? error.message : String(error || "未知错误");
+        if (focusSummaryTextEl) {
+          focusSummaryTextEl.textContent = `AI 摘要生成失败：${errorMessage}`;
+        }
+        if (focusKeyListEl) {
+          focusKeyListEl.innerHTML = `<li><span class="focus-key-icon">1</span><p><strong>生成失败</strong><span>${escapeHtml(errorMessage)}</span></p></li>`;
+        }
+      });
+    }
 
     const stopSelectionAutoScroll = () => {
       selectionAutoScrollSpeed = 0;
@@ -5419,12 +6024,51 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     });
 
     const handleSelectionChange = () => requestAnimationFrame(updateSelectionAction);
+    const getFocusWheelMultiplier = (event) => {
+      if (event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) {
+        return 0.35;
+      }
+      const absDelta = Math.abs(event.deltaY);
+      return absDelta < 90 ? 0.9 : 0.35;
+    };
     const handleFocusWheel = (event) => {
       if (!(shellEl instanceof HTMLElement) || event.ctrlKey) {
         return;
       }
+      if (event.target instanceof HTMLElement && event.target.closest(".focus-toolbar, button, input, textarea, select")) {
+        return;
+      }
       const deltaUnit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? shellEl.clientHeight : 1;
-      shellEl.scrollTop += event.deltaY * deltaUnit;
+      shellEl.scrollTop += event.deltaY * deltaUnit * getFocusWheelMultiplier(event);
+    };
+    const handleFocusKeyDown = (event) => {
+      if (!(shellEl instanceof HTMLElement)) {
+        return;
+      }
+      if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+
+      const lineStep = Math.max(80, Math.round(shellEl.clientHeight * 0.12));
+      const pageStep = Math.max(240, Math.round(shellEl.clientHeight * 0.82));
+      const keyScrollMap = {
+        ArrowDown: lineStep,
+        ArrowUp: -lineStep,
+        PageDown: pageStep,
+        PageUp: -pageStep,
+        Home: -shellEl.scrollTop,
+        End: shellEl.scrollHeight - shellEl.clientHeight - shellEl.scrollTop
+      };
+
+      let delta = keyScrollMap[event.key];
+      if (event.key === " ") {
+        delta = event.shiftKey ? -pageStep : pageStep;
+      }
+      if (!Number.isFinite(delta)) {
+        return;
+      }
+
+      shellEl.scrollTop += delta;
       event.preventDefault();
       event.stopPropagation();
     };
@@ -5449,6 +6093,47 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
         stopSelectionAutoScroll();
       }
     };
+    const shouldSkipManualTouchScroll = (target) => {
+      return target instanceof HTMLElement && Boolean(target.closest([
+        ".focus-toolbar",
+        ".focus-button",
+        ".focus-selection-action",
+        "button",
+        "a",
+        "input",
+        "textarea",
+        "select"
+      ].join(",")));
+    };
+    const handleFocusTouchStart = (event) => {
+      if (!isCoarsePointer || event.touches.length !== 1 || shouldSkipManualTouchScroll(event.target)) {
+        focusTouchScrollY = 0;
+        return;
+      }
+      focusTouchScrollY = event.touches[0].clientY;
+      focusTouchMoved = false;
+    };
+    const handleFocusTouchMove = (event) => {
+      if (!isCoarsePointer || !(shellEl instanceof HTMLElement) || event.touches.length !== 1 || !focusTouchScrollY) {
+        return;
+      }
+
+      const nextY = event.touches[0].clientY;
+      const deltaY = focusTouchScrollY - nextY;
+      if (Math.abs(deltaY) < 1) {
+        return;
+      }
+
+      shellEl.scrollTop += deltaY * 1.8;
+      focusTouchScrollY = nextY;
+      focusTouchMoved = true;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const handleFocusTouchEnd = () => {
+      focusTouchScrollY = 0;
+      focusTouchMoved = false;
+    };
 
     shadow.addEventListener("mouseup", handleSelectionChange);
     document.addEventListener("selectionchange", handleSelectionChange);
@@ -5459,6 +6144,12 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     window.addEventListener("mouseup", handlePointerUp);
 
     shellEl?.addEventListener("wheel", handleFocusWheel, { passive: false });
+    window.addEventListener("wheel", handleFocusWheel, { passive: true, capture: true });
+    window.addEventListener("keydown", handleFocusKeyDown, true);
+    shellEl?.addEventListener("touchstart", handleFocusTouchStart, { passive: true });
+    shellEl?.addEventListener("touchmove", handleFocusTouchMove, { passive: false });
+    shellEl?.addEventListener("touchend", handleFocusTouchEnd, { passive: true });
+    shellEl?.addEventListener("touchcancel", handleFocusTouchEnd, { passive: true });
     shellEl?.addEventListener("scroll", () => clearSelectionActionButton(), { passive: true });
     shellEl?.addEventListener("scroll", updateLineFocusMask, { passive: true });
     window.addEventListener("resize", updateLineFocusMask);
@@ -5475,6 +6166,12 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       shadow.removeEventListener("mouseup", handlePointerUp);
       shadow.removeEventListener("mouseleave", handlePointerLeave);
       shellEl?.removeEventListener("wheel", handleFocusWheel);
+      window.removeEventListener("wheel", handleFocusWheel, true);
+      window.removeEventListener("keydown", handleFocusKeyDown, true);
+      shellEl?.removeEventListener("touchstart", handleFocusTouchStart);
+      shellEl?.removeEventListener("touchmove", handleFocusTouchMove);
+      shellEl?.removeEventListener("touchend", handleFocusTouchEnd);
+      shellEl?.removeEventListener("touchcancel", handleFocusTouchEnd);
       window.removeEventListener("mouseup", handlePointerUp);
       window.removeEventListener("resize", updateLineFocusMask);
     };
@@ -5482,6 +6179,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
     state.focusMode.active = true;
     state.focusMode.host = host;
     cleanupFocusSelection();
+    setTimeout(() => shellEl?.focus?.({ preventScroll: true }), 0);
   }
 
   function startFocusModeSelection() {
@@ -5750,11 +6448,11 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       remoteEnabled: true,
       trialEnabled: true,
       fallbackToLocal: true,
-      trialApiUrl: settingsFormEls.trialApiUrl.value.trim(),
-      apiUrl: settingsFormEls.apiUrl.value.trim() || "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-      model: getActiveModel(),
+      trialApiUrl: "",
+      apiUrl: PROVIDERS.qianwen.url,
+      model: FIXED_VISUAL_MODEL,
       apiKey: settingsFormEls.apiKey.value.trim(),
-      aiTimelineEnabled: Boolean(settingsFormEls.aiTimelineEnabled.checked),
+      aiTimelineEnabled: AI_TIMELINE_FEATURE_ENABLED && Boolean(settingsFormEls.aiTimelineEnabled.checked),
       allowedHosts: parseAllowedHosts(settingsFormEls.allowedHosts.value)
     };
 
@@ -5834,7 +6532,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       state.history.push({
         role: "assistant",
         pageSummary: "提示",
-        answer: "提取 UI 规范需要先配置体验服务地址，或者填写你自己的 API Key。",
+        answer: "提取 UI 规范需要先填写你自己的 API Key。",
         suggestedNextSteps: ["点击右上角“体验 / API 设置”完成配置"],
         confidence: 0.9,
         elementHints: []
@@ -6031,7 +6729,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       state.history.push({
         role: "assistant",
         pageSummary: "提示",
-        answer: "生成 PRD 需要先配置体验服务地址，或者填写你自己的 API Key。",
+        answer: "生成 PRD 需要先填写你自己的 API Key。",
         suggestedNextSteps: ["点击右上角“体验 / API 设置”完成配置"],
         confidence: 0.9,
         elementHints: []
@@ -6139,7 +6837,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
       state.history.push({
         role: "assistant",
         pageSummary: "提示",
-        answer: "生成总结和脑图需要先配置体验服务地址，或者填写你自己的 API Key。",
+        answer: "生成总结和脑图需要先填写你自己的 API Key。",
         suggestedNextSteps: ["点击右上角“体验 / API 设置”完成配置"],
         confidence: 0.9,
         elementHints: []
@@ -7123,6 +7821,7 @@ const compareReportModalBodyEl = compareReportModalEl.querySelector(".semrush-co
   });
 
   observeAiTimelineMutations();
+  observePageCoachMountLifecycle();
 
   window.setInterval(() => {
     if (window.location.href !== state.lastUrl) {

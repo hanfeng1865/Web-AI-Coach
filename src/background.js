@@ -1,5 +1,5 @@
 import { generateGuidance } from "./core/guidance-engine.js";
-import { getDefaultRemoteSettings, generateRemoteGuidance, testRemoteConnection, generateUISpecAnalysis, generatePRDAnalysis, generatePageSummaryAnalysis, generatePageDiffAnalysis, getTrialStatus, generateProjectAssessmentAnalysis, generateTimelineKeywordAnalysis } from "./core/remote-client.js";
+import { getDefaultRemoteSettings, generateRemoteGuidance, testRemoteConnection, generateUISpecAnalysis, generatePRDAnalysis, generatePageSummaryAnalysis, generateFocusReadingInsights, generatePageDiffAnalysis, getTrialStatus, generateProjectAssessmentAnalysis, generateTimelineKeywordAnalysis } from "./core/remote-client.js";
 import { buildRedactionSummary, redactArray, redactText } from "./core/redaction.js";
 
 const DEFAULT_ALLOWED_HOSTS = [
@@ -39,10 +39,7 @@ function createInstallId() {
 }
 
 function hasConfiguredRemoteAccess(settings) {
-  return Boolean(
-    settings?.remoteEnabled &&
-      ((settings?.trialEnabled && settings?.trialApiUrl) || settings?.apiKey)
-  );
+  return Boolean(settings?.remoteEnabled && settings?.apiKey);
 }
 
 function hasDirectApiAccess(settings) {
@@ -50,11 +47,11 @@ function hasDirectApiAccess(settings) {
 }
 
 async function enrichSettings(settings) {
-  const enriched = { ...settings };
+  const enriched = { ...settings, trialApiUrl: "", trialStatus: null };
 
-  if (settings?.trialEnabled && settings?.trialApiUrl) {
+  if (enriched?.trialEnabled && enriched?.trialApiUrl) {
     try {
-      enriched.trialStatus = await getTrialStatus(settings);
+      enriched.trialStatus = await getTrialStatus(enriched);
     } catch (error) {
       enriched.trialStatus = {
         enabled: true,
@@ -176,10 +173,13 @@ async function getSettings() {
     "semrushCoachApiKeyBackup"
   ]);
   const storedSettings = data.semrushCoachSettings || {};
+  storedSettings.trialApiUrl = "";
   const backupApiKey = typeof data.semrushCoachApiKeyBackup === "string" ? data.semrushCoachApiKeyBackup : "";
   return {
     ...DEFAULT_SETTINGS,
     ...storedSettings,
+    trialApiUrl: "",
+    trialStatus: null,
     apiKey: storedSettings.apiKey || backupApiKey,
     installId: data.semrushCoachInstallId || ""
   };
@@ -191,6 +191,9 @@ async function saveSettings(nextSettings) {
     ...current,
     ...nextSettings
   };
+
+  merged.trialApiUrl = "";
+  merged.trialStatus = null;
 
   if (current.apiKey && Object.prototype.hasOwnProperty.call(nextSettings, "apiKey") && !nextSettings.apiKey) {
     merged.apiKey = current.apiKey;
@@ -278,7 +281,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const settings = await getSettings();
         if (!hasConfiguredRemoteAccess(settings)) {
-          sendResponse({ ok: false, error: "请先配置体验服务地址，或填写你自己的 API Key。" });
+          sendResponse({ ok: false, error: "请先填写你自己的 API Key。" });
           return;
         }
         const payload = {
@@ -302,7 +305,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const settings = await getSettings();
         if (!hasConfiguredRemoteAccess(settings)) {
-          sendResponse({ ok: false, error: "请先配置体验服务地址，或填写你自己的 API Key。" });
+          sendResponse({ ok: false, error: "请先填写你自己的 API Key。" });
           return;
         }
         const payload = {
@@ -331,7 +334,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const settings = await getSettings();
         if (!hasConfiguredRemoteAccess(settings)) {
-          sendResponse({ ok: false, error: "请先配置体验服务地址，或填写你自己的 API Key。" });
+          sendResponse({ ok: false, error: "请先填写你自己的 API Key。" });
           return;
         }
         const payload = message.payload;
@@ -352,7 +355,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const settings = await getSettings();
         if (!hasConfiguredRemoteAccess(settings)) {
-          sendResponse({ ok: false, error: "请先配置体验服务地址，或填写你自己的 API Key。" });
+          sendResponse({ ok: false, error: "请先填写你自己的 API Key。" });
           return;
         }
         const payload = {
@@ -366,6 +369,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true, data: summaryData });
       } catch (error) {
         console.error("[AI Coach] 页面总结与脑图生成失败:", error);
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.type === "SEMRUSH_COACH_FOCUS_INSIGHTS") {
+    (async () => {
+      try {
+        const settings = await getSettings();
+        if (!hasConfiguredRemoteAccess(settings)) {
+          sendResponse({ ok: false, error: "请先填写你自己的 API Key。" });
+          return;
+        }
+        const payload = {
+          ...message.payload,
+          title: redactText(message.payload?.title || ""),
+          articleText: redactText(message.payload?.articleText || ""),
+          localSummary: redactText(message.payload?.localSummary || ""),
+          localKeyPoints: (message.payload?.localKeyPoints || []).map((item) => ({
+            title: redactText(item?.title || ""),
+            body: redactText(item?.body || "")
+          }))
+        };
+        console.log("[AI Coach] 开始生成沉浸阅读摘要与关键节点...");
+        const insightData = await generateFocusReadingInsights({ payload, settings });
+        console.log("[AI Coach] 沉浸阅读摘要与关键节点生成完成");
+        sendResponse({ ok: true, data: insightData });
+      } catch (error) {
+        console.error("[AI Coach] 沉浸阅读摘要与关键节点生成失败:", error);
         sendResponse({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
       }
     })();
@@ -401,7 +434,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const settings = await getSettings();
         if (!hasConfiguredRemoteAccess(settings)) {
-          sendResponse({ ok: false, error: "请先配置体验服务地址，或填写你自己的 API Key。" });
+          sendResponse({ ok: false, error: "请先填写你自己的 API Key。" });
           return;
         }
 
@@ -531,4 +564,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   })();
 
   return true;
+});
+
+chrome.action.onClicked.addListener(async (tab) => {
+  if (tab?.id && /^https?:/i.test(tab.url || "")) {
+    chrome.tabs.sendMessage(tab.id, { type: "SEMRUSH_COACH_TOGGLE_PANEL" })
+      .catch((err) => {
+        console.log("[AI Coach] Failed to toggle panel on action clicked:", err);
+      });
+  }
 });
